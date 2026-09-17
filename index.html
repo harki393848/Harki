@@ -329,97 +329,179 @@ let globalData = [], headersList = [], currentCustomMonth = "6/2026", savedScrol
 const targetColumnIndex = 1;
 
 /* =========================================================
-   ماتۆڕی پاراستن و هاوکاتکردنی ڕاستەوخۆ (Ultra-Fast Cloud Vault)
+   ماتۆڕی پاراستن و هاوکاتکردنی ڕاستەوخۆ (Live Cloud Sync)
 ========================================================= */
 const CLOUD_SYNC_TOPIC = "brigade7_salary_live_vault_2026";
-const MILITARY_SECRET_KEY = "Peshmerga#Brigade7$Key2026";
 
-async function getCryptoKey() {
-    const enc = new TextEncoder();
-    const keyData = await crypto.subtle.digest("SHA-256", enc.encode(MILITARY_SECRET_KEY));
-    return crypto.subtle.importKey("raw", keyData, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
-}
-
-async function encryptPayload(plainText) {
+// پەخشی ڕاستەوخۆ بۆ مۆبایلی هەموو بەکارهێنەران
+async function broadcastLiveSalaryUpdate(payload) {
+    applyPayloadLocally(payload);
     try {
-        const key = await getCryptoKey();
-        const iv = crypto.getRandomValues(new Uint8Array(12));
-        const enc = new TextEncoder();
-        const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, enc.encode(plainText));
-        const combined = new Uint8Array(iv.byteLength + ciphertext.byteLength);
-        combined.set(iv, 0);
-        combined.set(new Uint8Array(ciphertext), iv.byteLength);
-        let binary = '';
-        const chunk = 8192;
-        for (let i = 0; i < combined.length; i += chunk) {
-            binary += String.fromCharCode.apply(null, combined.subarray(i, i + chunk));
-        }
-        return btoa(binary);
-    } catch(e) {
-        return btoa(encodeURIComponent(plainText));
-    }
-}
-
-async function decryptPayload(cipherBase64) {
-    try {
-        const binary = atob(cipherBase64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        const iv = bytes.slice(0, 12);
-        const data = bytes.slice(12);
-        const key = await getCryptoKey();
-        const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv }, key, data);
-        return new TextDecoder().decode(decrypted);
-    } catch(e) {
-        try { return decodeURIComponent(atob(cipherBase64)); } catch(err) { return null; }
-    }
-}
-
-// پەستاندنی کێشی داتای ئێکسڵ بۆ چەندین هێندە بچووکتر
-function compressSalaryData(headers, rows) {
-    const compactRows = rows.map(r => headers.map(h => (r[h] !== undefined && r[h] !== null) ? r[h] : ""));
-    return JSON.stringify({ h: headers, r: compactRows });
-}
-
-function decompressSalaryData(jsonStr) {
-    const parsed = JSON.parse(jsonStr);
-    if (parsed.h && parsed.r) {
-        const headers = parsed.h;
-        const rows = parsed.r.map(rowArr => {
-            const obj = {};
-            headers.forEach((h, idx) => { obj[h] = rowArr[idx] !== undefined ? rowArr[idx] : ""; });
-            return obj;
+        await fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}`, {
+            method: 'POST',
+            headers: { 'Title': 'DATA_SYNC', 'Priority': 'urgent' },
+            body: JSON.stringify(payload)
         });
-        return { headers, rows };
+    } catch(err) {
+        console.warn('Sync broadcast warning:', err);
     }
-    return parsed;
 }
 
-// سیستەمی فەرمی و بێ کێشەی خوێندنەوەی Google GViz API
+// جێگیرکردنی داتاکان لەسەر شاشە و ناو مۆبایل بە هەمیشەیی
+function applyPayloadLocally(data) {
+    if (!data) return;
+    let changed = false;
+
+    if (data.month) {
+        currentCustomMonth = data.month;
+        localStorage.setItem('brigade_custom_month', currentCustomMonth);
+        const lblM = document.getElementById('lblMonth');
+        if (lblM) lblM.textContent = currentCustomMonth;
+        document.title = `لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}`;
+        changed = true;
+    }
+
+    if (data.notice !== undefined) {
+        localStorage.setItem('brigade_announcement', data.notice);
+        const nd = document.getElementById('noticeTextDisplay');
+        if (nd) nd.textContent = data.notice;
+        changed = true;
+    }
+
+    if (data.headers && data.rows && data.rows.length > 0) {
+        headersList = data.headers;
+        globalData = data.rows;
+        localStorage.setItem('brigade_saved_headers', JSON.stringify(headersList));
+        localStorage.setItem('brigade_saved_data', JSON.stringify(globalData));
+        changed = true;
+    }
+
+    if (changed) {
+        filterSearch();
+        showLiveToast(data.message || 'داتاکان ڕاستەوخۆ نوێکرانەوە!');
+    }
+}
+
+function showLiveToast(msg) {
+    const toast = document.getElementById('liveSyncToast');
+    const txt = document.getElementById('liveSyncMsg');
+    if (!toast || !txt) return;
+    txt.textContent = msg;
+    toast.style.display = 'flex';
+    try {
+        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        audio.volume = 0.35;
+        audio.play().catch(()=>{});
+    } catch(e){}
+    setTimeout(() => { toast.style.display = 'none'; }, 4500);
+}
+
+// گوێگرتنی دەستبەجێ لە نوێکردنەوەکان لە کلاودەوە
+function startLiveServerListener() {
+    fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}/json?poll=1&since=all`).then(r => r.text()).then(async text => {
+        if (!text) return;
+        const lines = text.trim().split('\n');
+        for (let i = lines.length - 1; i >= 0; i--) {
+            try {
+                const item = JSON.parse(lines[i]);
+                if (item && item.message) {
+                    const packet = JSON.parse(item.message);
+                    if (packet.excelUrl && (packet.excelUrl !== localStorage.getItem('brigade_saved_excel_url') || globalData.length === 0)) {
+                        await loadExcelFromUrl(packet.excelUrl, false);
+                    }
+                    applyPayloadLocally(packet);
+                    break;
+                }
+            } catch(e){}
+        }
+    }).catch(()=>{});
+
+    try {
+        const sse = new EventSource(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}/sse`);
+        sse.onmessage = async (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                if (data && data.message) {
+                    const packet = JSON.parse(data.message);
+                    if (packet.excelUrl) {
+                        await loadExcelFromUrl(packet.excelUrl, true);
+                    }
+                    applyPayloadLocally(packet);
+                }
+            } catch(err){}
+        };
+        sse.onopen = () => {
+            const dot = document.getElementById('cloudStatusDot');
+            if (dot) dot.style.background = '#22c55e';
+        };
+        sse.onerror = () => {
+            const dot = document.getElementById('cloudStatusDot');
+            if (dot) dot.style.background = '#eab308';
+        };
+    } catch(e){}
+}
+
+/* =========================================================
+   سیستەمی خوێندنەوەی ئێکسڵ و گووگڵ درایڤ
+========================================================= */
 async function loadExcelFromUrl(rawUrl, showToast = true) {
     if (!rawUrl) return false;
-    let fileId = "1YPrcicRPp2cOGpBwjuEX1qsJduaPkewU"; // ئایدی فایلی تۆ
+    let targetUrl = rawUrl.trim();
+    let downloadCandidates = [];
 
-    // دەرهێنانی ئایدی فایل لە هەر لینکێک کە دابنرێت
-    const match = rawUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || rawUrl.match(/id=([a-zA-Z0-9_-]+)/);
-    if (match && match[1]) fileId = match[1];
+    if (targetUrl.includes('google.com')) {
+        const match = targetUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || targetUrl.match(/id=([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) {
+            const fileId = match[1];
+            downloadCandidates.push(`https://docs.google.com/spreadsheets/d/${fileId}/gviz/tq?tqx=out:csv`);
+            downloadCandidates.push(`https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`);
+            downloadCandidates.push(`https://drive.google.com/uc?export=download&id=${fileId}`);
+        }
+    } else if (targetUrl.includes('dropbox.com')) {
+        targetUrl = targetUrl.replace('dl=0', 'raw=1').replace('?dl=1', '?raw=1');
+        if (!targetUrl.includes('raw=1')) targetUrl += (targetUrl.includes('?') ? '&' : '?') + 'raw=1';
+        downloadCandidates.push(targetUrl);
+    } else {
+        downloadCandidates.push(targetUrl);
+    }
 
-    if (showToast) showLiveToast("خەریکی خوێندنەوەی مووچەیە لە گووگڵ شێت...");
+    if (showToast) showLiveToast("خەریکی وەرگرتنی فایلی مووچەیە لە لینکەوە...");
 
-    // لینکی فەرمیی گووگڵ کە هەرگیز بلۆک نابێت و هیچ پرۆکسییەکی ناوێت
-    const gvizUrl = `https://docs.google.com/spreadsheets/d/${fileId}/gviz/tq?tqx=out:csv`;
+    let arrayBuffer = null;
+    let isCsvText = false;
+    let csvData = null;
+
+    for (let candidate of downloadCandidates) {
+        const tryUrls = [
+            candidate,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(candidate)}`,
+            `https://corsproxy.io/?url=${encodeURIComponent(candidate)}`
+        ];
+
+        for (let u of tryUrls) {
+            try {
+                const res = await fetch(u);
+                if (res.ok) {
+                    const text = await res.text();
+                    if (text && text.length > 50 && !text.startsWith("<!DOCTYPE") && !text.startsWith("<html")) {
+                        isCsvText = true;
+                        csvData = text;
+                        break;
+                    }
+                }
+            } catch(e) {}
+        }
+        if (isCsvText) break;
+    }
 
     try {
-        const res = await fetch(gvizUrl);
-        if (!res.ok) throw new Error("Google fetch failed");
-        const csvText = await res.text();
-
-        // پشکنین: دڵنیابوون لەوەی داتای مووچەیە نەک پەڕەی هەڵە
-        if (csvText && csvText.length > 50 && !csvText.startsWith("<!DOCTYPE")) {
-            const wb = XLSX.read(csvText, { type: 'string' });
-            const ws = wb.Sheets[wb.SheetNames[0]];
-            const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
-
+        let wb = null;
+        if (isCsvText && csvData) {
+            wb = XLSX.read(csvData, { type: 'string' });
+        }
+        if (wb) {
+            let ws = wb.Sheets[wb.SheetNames[0]];
+            let json = XLSX.utils.sheet_to_json(ws, { header: 1 });
             if (json && json.length > 0) {
                 headersList = json[0];
                 globalData = [];
@@ -433,17 +515,17 @@ async function loadExcelFromUrl(rawUrl, showToast = true) {
                 localStorage.setItem('brigade_saved_data', JSON.stringify(globalData));
                 localStorage.setItem('brigade_saved_excel_url', rawUrl);
                 filterSearch();
-                showLiveToast(`📊 مووچەی (${globalData.length}) پێشمەرگە لە گووگڵەوە جێگیرکرا!`);
+                showLiveToast(`📊 فایلی مووچە بۆ (${globalData.length}) پێشمەرگە جێگیرکرا!`);
                 return true;
             }
         }
     } catch(err) {
-        console.error("GViz Error:", err);
+        console.error("XLSX error:", err);
     }
     return false;
 }
 
-// کاتێک ئەدمین دوگمەی سەوز دادەگرێت
+// کاتێک ئەدمین لە پانێڵەکەدا لینک دادەنێت
 async function saveAdminExcelUrl() {
     const input = document.getElementById('adminExcelUrlInput');
     const url = input ? input.value.trim() : '';
@@ -452,7 +534,7 @@ async function saveAdminExcelUrl() {
         return;
     }
     document.getElementById('loadingOverlay').style.display = 'flex';
-    document.getElementById('loadingText').textContent = "فایلەکە لە گووگڵ دەخوێندرێتەوە...";
+    document.getElementById('loadingText').textContent = "فایلەکە لە لینک دەخوێندرێتەوە...";
 
     const success = await loadExcelFromUrl(url, false);
     document.getElementById('loadingOverlay').style.display = 'none';
@@ -461,16 +543,259 @@ async function saveAdminExcelUrl() {
         broadcastLiveSalaryUpdate({
             excelUrl: url,
             month: currentCustomMonth,
-            message: '📊 فایلی نوێی مووچە لە گووگڵەوە بۆ هەمووان نوێکرایەوە!'
+            message: '📊 فایلی نوێی مووچە لە ڕێگەی لینکەوە بۆ هەمووان نوێکرایەوە!'
         });
-        alert(`سەرکەوتوو بوو! مووچەی (${globalData.length}) پێشمەرگە خوێندرایەوە و بۆ هەمووان لەسەر مۆبایلەکانیان جێگیرکرا.`);
+        alert(`سەرکەوتوو بوو! مووچەی (${globalData.length}) پێشمەرگە خوێندرایەوە و بۆ هەمووان جێگیرکرا.`);
     } else {
-        alert('⚠️ نەتوانرا بخوێندرێتەوە!\nتکایە دڵنیابە لەوەی لەناو گووگڵ چوویتە سەر File پاشان Save as Google Sheets-ت لێداوە، و دەسەڵاتی فایلەکەش لەسەر Anyone with the link دانراوە.');
+        alert('⚠️ نەتوانرا بخوێندرێتەوە!\nتکایە دڵنیابە لەوەی دەسەڵاتی فایلەکە لەسەر Anyone with the link دانراوە.');
     }
 }
 
+// کاتێک ئەدمین فایلی ئێکسڵ بە ڕاستەوخۆ هەڵدەبژێرێت
+function handleFile(e) {
+    const f = e.target.files[0];
+    if (!f) return;
+    document.getElementById('loadingOverlay').style.display = 'flex';
+    document.getElementById('loadingText').textContent = "فایلەکە دەخوێندرێتەوە...";
+
+    let r = new FileReader();
+    r.onload = async function(evt) {
+        try {
+            let d = new Uint8Array(evt.target.result);
+            let wb = XLSX.read(d, { type: 'array' });
+            let ws = wb.Sheets[wb.SheetNames[0]];
+            let json = XLSX.utils.sheet_to_json(ws, { header: 1 });
+            if (json && json.length > 0) {
+                headersList = json[0];
+                globalData = [];
+                for (let i = 1; i < json.length; i++) {
+                    let row = json[i];
+                    let obj = {};
+                    headersList.forEach((h, idx) => { obj[h] = row[idx] !== undefined ? row[idx] : ""; });
+                    globalData.push(obj);
+                }
+                localStorage.setItem('brigade_saved_headers', JSON.stringify(headersList));
+                localStorage.setItem('brigade_saved_data', JSON.stringify(globalData));
+                filterSearch();
+                await broadcastLiveSalaryUpdate({
+                    month: currentCustomMonth,
+                    headers: headersList,
+                    rows: globalData,
+                    message: '📊 فایلی نوێی مووچە بە سەرکەوتوویی بارکرا!'
+                });
+                alert(`فایلی ئێکسڵ بۆ (${globalData.length}) پێشمەرگە بە سەرکەوتوویی لەسەر مۆبایلەکەت بارکرا!`);
+            }
+        } catch (err) {
+            alert('هەڵە لە خوێندنەوەی فایلی ئێکسڵ!');
+        } finally {
+            document.getElementById('loadingOverlay').style.display = 'none';
+            e.target.value = '';
+        }
+    };
+    r.readAsArrayBuffer(f);
+}
+
+/* =========================================================
+   کۆنتڕۆڵی نهێنی ئەدمین (١٠ جار دەست لەسەر لۆگۆ + وشەی نهێنی 1234)
+========================================================= */
+let secretLogoTapCount = 0;
+let secretLogoTapTimer = null;
+
+function handleSecretLogoTap() {
+    secretLogoTapCount++;
+    clearTimeout(secretLogoTapTimer);
+    secretLogoTapTimer = setTimeout(() => { secretLogoTapCount = 0; }, 5000);
+
+    if (secretLogoTapCount >= 10) {
+        secretLogoTapCount = 0;
+        openSecretPassModal();
+    }
+}
+
+function openSecretPassModal() {
+    const modal = document.getElementById('secretPassModal');
+    const input = document.getElementById('secretAdminPassInput');
+    const err = document.getElementById('secretPassError');
+    if (modal && input) {
+        input.value = '';
+        if (err) err.style.display = 'none';
+        modal.style.display = 'flex';
+        input.focus();
+    }
+}
+
+function closeSecretPassModal() {
+    const modal = document.getElementById('secretPassModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function verifySecretAdminPass() {
+    const input = document.getElementById('secretAdminPassInput');
+    const err = document.getElementById('secretPassError');
+    if (input && input.value.trim() === '1234') {
+        closeSecretPassModal();
+        openSecretAdminPanel();
+    } else {
+        if (err) err.style.display = 'block';
+        if (input) { input.value = ''; input.focus(); }
+    }
+}
+
+function openSecretAdminPanel() {
+    const panel = document.getElementById('secretAdminPanelModal');
+    const monthInput = document.getElementById('adminMonthInput');
+    const noticeArea = document.getElementById('adminNoticeTextarea');
+    const urlInput = document.getElementById('adminExcelUrlInput');
+
+    if (monthInput) monthInput.value = currentCustomMonth;
+    if (noticeArea) noticeArea.value = document.getElementById('noticeTextDisplay')?.textContent || '';
+    if (urlInput) urlInput.value = localStorage.getItem('brigade_saved_excel_url') || '';
+
+    if (panel) panel.style.display = 'flex';
+}
+
+function closeSecretAdminPanel() {
+    const panel = document.getElementById('secretAdminPanelModal');
+    if (panel) panel.style.display = 'none';
+}
+
+function saveAdminMonth() {
+    const val = document.getElementById('adminMonthInput')?.value.trim();
+    if (!val) return;
+    currentCustomMonth = val;
+    localStorage.setItem('brigade_custom_month', currentCustomMonth);
+    const lblM = document.getElementById('lblMonth');
+    if (lblM) lblM.textContent = currentCustomMonth;
+    document.title = `لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}`;
+    broadcastLiveSalaryUpdate({
+        month: currentCustomMonth,
+        message: `📅 مانگی مووچە گۆڕدرا بۆ: ${currentCustomMonth}`
+    });
+    alert('مانگی مووچە بە سەرکەوتوویی نوێکرایەوە!');
+}
+
+function saveAdminNotice() {
+    let txt = document.getElementById('adminNoticeTextarea')?.value.trim();
+    if (!txt) txt = "هیچ ئاگادارییەک نییە.";
+    localStorage.setItem('brigade_announcement', txt);
+    const nd = document.getElementById('noticeTextDisplay');
+    if (nd) nd.textContent = txt;
+    broadcastLiveSalaryUpdate({
+        notice: txt,
+        message: '📢 ئاگاداری نوێ لەلایەن بەڕێوەبەرەوە بڵاوکرایەوە!'
+    });
+    alert('ئاگاداری نوێ بە سەرکەوتوویی بڵاوکرایەوە!');
+}
+
+function updateMonth(e) {
+    currentCustomMonth = e.textContent.trim();
+    localStorage.setItem('brigade_custom_month', currentCustomMonth);
+    document.title = `لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}`;
+    broadcastLiveSalaryUpdate({
+        month: currentCustomMonth,
+        message: `📅 مانگی مووچە گۆڕدرا بۆ: ${currentCustomMonth}`
+    });
+}
+
+function closeNoticeModal() {
+    const modal = document.getElementById('noticeModalOverlay');
+    if (modal) modal.style.display = 'none';
+}
+
+function saveNotice() {
+    let txt = document.getElementById('noticeInputText')?.value.trim();
+    if (!txt) txt = "هیچ ئاگادارییەک نییە.";
+    closeNoticeModal();
+    localStorage.setItem('brigade_announcement', txt);
+    const nd = document.getElementById('noticeTextDisplay');
+    if (nd) nd.textContent = txt;
+    broadcastLiveSalaryUpdate({
+        notice: txt,
+        message: '📢 ئاگاداری نوێ بڵاوکرایەوە!'
+    });
+}
+
+function loadSavedState() {
+    let savedMonth = localStorage.getItem('brigade_custom_month');
+    if (savedMonth) currentCustomMonth = savedMonth;
+    let lblM = document.getElementById('lblMonth');
+    if (lblM) lblM.textContent = currentCustomMonth;
+    document.title = `لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}`;
+
+    let localHeaders = localStorage.getItem('brigade_saved_headers');
+    let localData = localStorage.getItem('brigade_saved_data');
+    if (localHeaders && localData) {
+        try {
+            headersList = JSON.parse(localHeaders);
+            globalData = JSON.parse(localData);
+        } catch(e) {}
+    }
+
+    let savedNotice = localStorage.getItem('brigade_announcement');
+    if (savedNotice) {
+        const nd = document.getElementById('noticeTextDisplay');
+        if (nd) nd.textContent = savedNotice;
+    }
+}
+
+const ranksSheetData = [
+    ["ليوا", "1,500,000", "605,000", "2,000,000", "4,105,000", "105,000", "", "105,000", "3,980,250", "100", "1,500", "1,000", "2,600", "3,977,650"],
+    ["عميد", "1,048,000", "590,000", "", "1,638,000", "73,360", "", "73,360", "1,564,640", "100", "1,500", "1,000", "2,600", "1,562,040"],
+    ["عقيد", "758,000", "575,000", "", "1,333,000", "53,060", "", "53,060", "1,279,940", "100", "1,500", "1,000", "2,600", "1,277,340"],
+    ["مقدم", "621,000", "560,000", "", "1,181,000", "43,470", "", "43,470", "1,137,530", "100", "1,500", "1,000", "2,600", "1,134,930"],
+    ["رائد", "509,000", "545,000", "", "1,054,000", "35,630", "", "35,630", "1,018,370", "100", "1,500", "1,000", "2,600", "1,015,770"],
+    ["نقيب", "429,000", "530,000", "", "959,000", "30,030", "", "30,030", "928,970", "100", "1,500", "1,000", "2,600", "926,370"],
+    ["م.اول", "362,000", "515,000", "", "877,000", "25,340", "", "25,340", "851,660", "100", "1,500", "1,000", "2,600", "849,060"],
+    ["ملازم", "296,000", "500,000", "", "796,000", "20,720", "", "20,720", "775,280", "100", "1,500", "1,000", "2,600", "772,680"],
+    ["ن.ض.د/م", "509,000", "485,000", "", "994,000", "35,630", "", "35,630", "958,370", "100", "500", "750", "1,350", "957,020"],
+    ["ن.ض.د/1", "450,000", "485,000", "", "935,000", "31,500", "", "31,500", "903,500", "100", "500", "750", "1,350", "902,150"],
+    ["ن.ض.د/2", "429,000", "485,000", "", "914,000", "30,030", "", "30,030", "883,970", "100", "500", "750", "1,350", "882,620"],
+    ["ن.ض.د/3", "398,000", "470,000", "", "868,000", "27,860", "", "27,860", "840,140", "100", "500", "750", "1,350", "838,790"],
+    ["ن.ض.د/4", "380,000", "470,000", "", "850,000", "26,600", "", "26,600", "823,400", "100", "500", "750", "1,350", "822,050"],
+    ["ن.ض.د/5", "362,000", "455,000", "", "817,000", "25,340", "", "25,340", "791,660", "100", "500", "750", "1,350", "790,310"],
+    ["ن.ض.د/6", "332,000", "455,000", "", "787,000", "23,240", "", "23,240", "763,760", "100", "500", "750", "1,350", "762,410"],
+    ["ن.ض.د/7", "314,000", "440,000", "", "754,000", "21,980", "", "21,980", "732,020", "100", "500", "750", "1,350", "730,670"],
+    ["ن.ض.د/8", "296,000", "440,000", "", "736,000", "20,720", "", "20,720", "715,280", "100", "500", "750", "1,350", "713,930"],
+    ["ر.ع", "250,000", "425,000", "", "675,000", "17,500", "", "17,500", "657,500", "100", "500", "750", "1,350", "656,150"],
+    ["عريف", "235,000", "410,000", "", "645,000", "16,450", "", "16,450", "628,550", "100", "500", "750", "1,350", "627,200"],
+    ["ن.ع", "205,000", "395,000", "", "600,000", "14,350", "", "14,350", "585,650", "100", "500", "750", "1,350", "584,300"],
+    ["ج.اول", "180,000", "380,000", "", "560,000", "12,600", "", "12,600", "547,400", "100", "500", "500", "1,100", "546,300"],
+    ["پ.م", "164,000", "350,000", "", "514,000", "11,480", "", "11,480", "502,520", "100", "500", "500", "1,100", "501,420"]
+];
+
+const diffSheetData = [
+    ["عەمید", "بۆ", "لیوا", "2,415,610"],
+    ["عقید", "بۆ", "عەمید", "384,700"],
+    ["مقدم", "بۆ", "عقید", "142,410"],
+    ["رائد", "بۆ", "مقدم", "119,160"],
+    ["نقيب", "بۆ", "رائد", "89,400"],
+    ["م.اول", "بۆ", "نقيب", "77,310"],
+    ["ملازم", "بۆ", "م.اول", "76,280"],
+    ["ن.ض/١", "بۆ", "ن.ض/م", "54,870"],
+    ["ن.ض/٢", "بۆ", "ن.ض/١", "19,530"],
+    ["ن.ض/٣", "بۆ", "ن.ض/٢", "43,820"],
+    ["ن.ض/٤", "بۆ", "ن.ض/٣", "16,740"],
+    ["ن.ض/٥", "بۆ", "ن.ض/٤", "31,740"],
+    ["ن.ض/٦", "بۆ", "ن.ض/٥", "37,900"],
+    ["ن.ض/٧", "بۆ", "ن.ض/٦", "31,740"],
+    ["ن.ض/٨", "بۆ", "ن.ض/٧", "16,740"],
+    ["ر.ع", "بۆ", "ن.ض/٨", "57,780"],
+    ["عريف", "بۆ", "ر.ع", "28,950"],
+    ["ن.ع", "بۆ", "عريف", "42,900"],
+    ["ج.اول", "بۆ", "ن.ع", "38,000"],
+    ["پ.م", "بۆ", "ج.اول", "44,880"]
+];
+
+window.onload = () => {
+    buildRanksTable();
+    buildDiffTable();
+    loadSavedState();
+    startLiveServerListener();
+};
+
 function buildRanksTable() {
     const tbody = document.getElementById('ranksTableBody');
+    if (!tbody) return;
     tbody.innerHTML = '';
     ranksSheetData.forEach((row, index) => {
         let tr = document.createElement('tr');
@@ -488,6 +813,7 @@ function buildRanksTable() {
 
 function buildDiffTable() {
     const tbody = document.getElementById('diffTableBody');
+    if (!tbody) return;
     tbody.innerHTML = '';
     diffSheetData.forEach((row, index) => {
         let tr = document.createElement('tr');
@@ -509,20 +835,20 @@ function closeAboutModalOutside(e) { if (e.target.id === 'aboutModal') closeAbou
 
 function toggleRanksTable() {
     const modal = document.getElementById('ranksModalOverlay');
-    if(modal.style.display === 'flex'){
+    if (modal.style.display === 'flex') {
         modal.style.display = 'none';
         window.scrollTo(0, savedScrollY);
     } else {
         savedScrollY = window.scrollY;
         modal.style.display = 'flex';
         const wrapper = document.querySelector('.ranks-table-wrapper');
-        if(wrapper){ wrapper.scrollLeft = wrapper.scrollWidth; wrapper.scrollTop = 0; }
+        if (wrapper) { wrapper.scrollLeft = wrapper.scrollWidth; wrapper.scrollTop = 0; }
     }
 }
 
 function toggleDiffTable() {
     const modal = document.getElementById('diffModalOverlay');
-    if(modal.style.display === 'flex'){
+    if (modal.style.display === 'flex') {
         modal.style.display = 'none';
         window.scrollTo(0, savedScrollY);
     } else {
@@ -544,98 +870,98 @@ function closeDiffModalOutside(e) {
     } 
 }
 
-function toggleTheme(){ document.body.classList.toggle('dark-mode'); }
+function toggleTheme() { document.body.classList.toggle('dark-mode'); }
 
-function formatCellValue(h,v){
-    if(v===undefined||v===null)return"";
-    let s=v.toString().trim();
-    if(s==="")return"";
-    if(isUniqueHeader(h)){return s.replace(/,/g, '');}
-    let n=Number(s.replace(/,/g,''));
-    return!isNaN(n)&&s!==""?n.toLocaleString('en-US'):s;
+function formatCellValue(h, v) {
+    if (v === undefined || v === null) return "";
+    let s = v.toString().trim();
+    if (s === "") return "";
+    if (isUniqueHeader(h)) return s.replace(/,/g, '');
+    let n = Number(s.replace(/,/g, ''));
+    return !isNaN(n) && s !== "" ? n.toLocaleString('en-US') : s;
 }
 
-function isTargetHeader(h){
-    let c=h.trim().replace(/ڕ/g,'ر').replace(/ي/g,'ی');
-    return c.includes("بری شایستە")||c.includes("بڕی شایستە")||c.includes("بری چەک")||c.includes("بڕی چەک")||c.includes("بری پێویست")||c.includes("بڕی پێویست");
+function isTargetHeader(h) {
+    let c = h.trim().replace(/ڕ/g, 'ر').replace(/ي/g, 'ی');
+    return c.includes("بری شایستە") || c.includes("بڕی شایستە") || c.includes("بری چەک") || c.includes("بڕی چەک") || c.includes("بری پێویست") || c.includes("بڕی پێویست");
 }
 
-function isUniqueHeader(h){return h.trim().replace(/ڕ/g,'ر').replace(/ي/g,'ی').includes("بێهاوتا");}
-function isExcludedHeader(h){let c=h.trim().replace(/ڕ/g,'ر').replace(/ي/g,'ی');return c==='پۆل'||c==='پلە'||c.includes("جۆری مووچەخۆر");}
+function isUniqueHeader(h) { return h.trim().replace(/ڕ/g, 'ر').replace(/ي/g, 'ی').includes("بێهاوتا"); }
+function isExcludedHeader(h) { let c = h.trim().replace(/ڕ/g, 'ر').replace(/ي/g, 'ی'); return c === 'پۆل' || c === 'پلە' || c.includes("جۆری مووچەخۆر"); }
 
-function displayVerticalRecord(row){
-    const c=document.getElementById('resultContainer');
-    c.innerHTML='';
-    let g="";
-    headersList.forEach(h=>{let t=h.trim().toLowerCase();if((t==='پۆل'||t==='پلە')&&row[h])g=row[h].toString().trim();});
+function displayVerticalRecord(row) {
+    const c = document.getElementById('resultContainer');
+    c.innerHTML = '';
+    let g = "";
+    headersList.forEach(h => { let t = h.trim().toLowerCase(); if ((t === 'پۆل' || t === 'پلە') && row[h]) g = row[h].toString().trim(); });
 
-    const card=document.createElement('div');
-    card.className='record-card';
-    const hd=document.createElement('div');
-    hd.className='record-header';
-    hd.innerHTML=g?`لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}<br>یەکە « ${g} »`:`لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}`;
+    const card = document.createElement('div');
+    card.className = 'record-card';
+    const hd = document.createElement('div');
+    hd.className = 'record-header';
+    hd.innerHTML = g ? `لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}<br>یەکە « ${g} »` : `لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}`;
     card.appendChild(hd);
 
-    headersList.filter(h=>!isExcludedHeader(h)&&row[h]!==undefined&&row[h]!==null&&row[h].toString().trim()!=="").forEach(h=>{
-        const r=document.createElement('div');
-        r.className='kv-row';
-        const k=document.createElement('div');
-        k.className='kv-key';
-        k.textContent=h;
-        const v=document.createElement('div');
-        v.className='kv-val';
-        if(isTargetHeader(h))v.classList.add('special-highlight');
-        v.textContent=formatCellValue(h,row[h]);
+    headersList.filter(h => !isExcludedHeader(h) && row[h] !== undefined && row[h] !== null && row[h].toString().trim() !== "").forEach(h => {
+        const r = document.createElement('div');
+        r.className = 'kv-row';
+        const k = document.createElement('div');
+        k.className = 'kv-key';
+        k.textContent = h;
+        const v = document.createElement('div');
+        v.className = 'kv-val';
+        if (isTargetHeader(h)) v.classList.add('special-highlight');
+        v.textContent = formatCellValue(h, row[h]);
         r.appendChild(k);
         r.appendChild(v);
         card.appendChild(r);
-        if(isUniqueHeader(h)){ const d=document.createElement('div'); d.className='unique-divider'; card.appendChild(d); }
+        if (isUniqueHeader(h)) { const d = document.createElement('div'); d.className = 'unique-divider'; card.appendChild(d); }
     });
     c.appendChild(card);
-    document.getElementById('bottomPrintContainer').style.display='flex';
+    document.getElementById('bottomPrintContainer').style.display = 'flex';
 }
 
-function clearSearch(){
-    document.getElementById('txtSearch').value='';
-    document.getElementById('lstSuggestions').style.display='none';
-    document.getElementById('resultContainer').innerHTML='';
-    document.getElementById('bottomPrintContainer').style.display='none';
+function clearSearch() {
+    document.getElementById('txtSearch').value = '';
+    document.getElementById('lstSuggestions').style.display = 'none';
+    document.getElementById('resultContainer').innerHTML = '';
+    document.getElementById('bottomPrintContainer').style.display = 'none';
 }
 
-function filterSearch(){
-    const q=document.getElementById('txtSearch').value.trim(),lst=document.getElementById('lstSuggestions');
-    lst.innerHTML='';
-    document.getElementById('resultContainer').innerHTML='';
-    document.getElementById('bottomPrintContainer').style.display='none';
-    if(q.length===0||globalData.length===0){lst.style.display='none';return;}
+function filterSearch() {
+    const q = document.getElementById('txtSearch').value.trim(), lst = document.getElementById('lstSuggestions');
+    lst.innerHTML = '';
+    document.getElementById('resultContainer').innerHTML = '';
+    document.getElementById('bottomPrintContainer').style.display = 'none';
+    if (q.length === 0 || globalData.length === 0) { lst.style.display = 'none'; return; }
 
-    let cq=q.replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/ە/g,'ه').replace(/\u200c/g,'').toLowerCase();
-    let sm=[],im=[];
+    let cq = q.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/ە/g, 'ه').replace(/\u200c/g, '').toLowerCase();
+    let sm = [], im = [];
 
-    globalData.forEach(row=>{
-        let val=row[headersList[targetColumnIndex]];
-        if(val===undefined||val===null)return;
-        let cv=val.toString().replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/ە/g,'ه').replace(/\u200c/g,'').toLowerCase();
-        if(cv.includes(cq)){
-            if(cv.startsWith(cq)){if(!sm.includes(row))sm.push(row);}
-            else{if(!im.includes(row)&&!sm.includes(row))im.push(row);}
+    globalData.forEach(row => {
+        let val = row[headersList[targetColumnIndex]];
+        if (val === undefined || val === null) return;
+        let cv = val.toString().replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/ە/g, 'ه').replace(/\u200c/g, '').toLowerCase();
+        if (cv.includes(cq)) {
+            if (cv.startsWith(cq)) { if (!sm.includes(row)) sm.push(row); }
+            else { if (!im.includes(row) && !sm.includes(row)) im.push(row); }
         }
     });
 
-    let m=[...sm,...im],cnt=0;
-    m.slice(0,30).forEach(item=>{
-        let dv=item[headersList[targetColumnIndex]]||Object.values(item)[1]||Object.values(item)[0]||"";
-        const li=document.createElement('li');
-        li.textContent=dv;
-        li.onclick=()=>{
-            document.getElementById('txtSearch').value=dv;
-            lst.style.display='none';
+    let m = [...sm, ...im], cnt = 0;
+    m.slice(0, 30).forEach(item => {
+        let dv = item[headersList[targetColumnIndex]] || Object.values(item)[1] || Object.values(item)[0] || "";
+        const li = document.createElement('li');
+        li.textContent = dv;
+        li.onclick = () => {
+            document.getElementById('txtSearch').value = dv;
+            lst.style.display = 'none';
             displayVerticalRecord(item);
         };
         lst.appendChild(li);
         cnt++;
     });
-    lst.style.display=cnt>0?'block':'none';
+    lst.style.display = cnt > 0 ? 'block' : 'none';
 }
 </script>
 </body>
