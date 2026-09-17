@@ -12,7 +12,7 @@ body{font-family:Tahoma,sans-serif;background:var(--bg-color);background-attachm
 #loadingOverlay,.modal-overlay,.ranks-modal-overlay,#diffModalOverlay,#loginOverlay,#noticeModalOverlay{position:fixed;top:0;left:0;width:100%;height:100%;display:none;justify-content:center;align-items:center;z-index:99999}
 #loadingOverlay{background:rgba(0,0,0,0.5);display:none}
 .loading-box{color:#ffffff;font-weight:bold;font-size:18px;text-align:center}
-.main-form-wrapper{width:100%;max-width:750px;background:rgba(255,255,255,0.85);border:3px solid var(--table-border);border-radius:16px;padding:15px;box-sizing:border-box;box-shadow:0 10px 30px rgba(56,189,248,0.3);margin-top:5px;display:none;}
+.main-form-wrapper{width:100%;max-width:750px;background:rgba(255,255,255,0.85);border:3px solid var(--table-border);border-radius:16px;padding:15px;box-sizing:border-box;box-shadow:0 10px 30px rgba(56,189,248,0.3);margin-top:5px;display:block;}
 body.dark-mode .main-form-wrapper{background:rgba(30,41,59,0.85)}
 
 /* User Bar & Logout */
@@ -118,14 +118,52 @@ body { background: #f0fdf4 !important; -webkit-print-color-adjust: exact; print-
 </head>
 <body>
 
-<!-- Login Modal -->
-<div id="loginOverlay" style="display:flex;">
-    <div class="login-card">
-        <h2>سیستەمی مووچەی لیوا</h2>
-        <input type="text" id="loginUsername" class="login-input" placeholder="ناوی بەکارهێنەر بنووسە..." autocomplete="off">
-        <input type="password" id="loginPassword" class="login-input" placeholder="وشەی نهێنی بنووسە...">
-        <button class="login-btn" onclick="handleLogin()">چوونەژوورەوە</button>
-        <div id="loginError" class="login-error">ناوی بەکارهێنەر یان وشەی نهێنی هەڵەیە!</div>
+<!-- مۆداڵی داواکردنی وشەی نهێنی دوای ١٠ جار کلیک -->
+<div class="modal-overlay" id="secretPassModal" style="display:none;">
+    <div class="login-card" style="max-width:320px; padding:20px;">
+        <div style="font-size:30px; margin-bottom:8px;">🔒</div>
+        <h3 style="color:var(--th-color); margin:0 0 10px 0; font-size:15px;">تایبەت بە بەڕێوەبەر</h3>
+        <p style="font-size:11px; color:var(--text-color); margin:0 0 12px 0;">تکایە وشەی نهێنی بنووسە:</p>
+        <input type="password" id="secretAdminPassInput" class="login-input" placeholder="وشەی نهێنی..." style="text-align:center; font-size:16px; letter-spacing:3px;">
+        <div style="display:flex; gap:6px;">
+            <button class="login-btn" style="background:#64748b;" onclick="closeSecretPassModal()">داخستن</button>
+            <button class="login-btn" onclick="verifySecretAdminPass()">چوونەژوورەوە</button>
+        </div>
+        <div id="secretPassError" class="login-error" style="display:none;">وشەی نهێنی هەڵەیە!</div>
+    </div>
+</div>
+
+<!-- مۆداڵی نهێنی کۆنتڕۆڵی ئەدمین (ئێکسڵ، ئاگاداری، مانگ) -->
+<div class="modal-overlay" id="secretAdminPanelModal" style="display:none;">
+    <div class="notice-modal-card" style="max-width:440px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid var(--table-border); padding-bottom:8px; margin-bottom:12px;">
+            <h3 style="color:var(--th-color); margin:0; font-size:15px;">⚙️ پانێڵی نهێنی بەڕێوەبەر (ئەدمین)</h3>
+            <button onclick="closeSecretAdminPanel()" style="background:none; border:none; color:#ef4444; font-size:16px; cursor:pointer; font-weight:bold;">✕</button>
+        </div>
+
+        <!-- ١. بارکردنی فایلی ئێکسڵ -->
+        <div style="background:var(--th-bg); padding:10px; border-radius:10px; border:1px solid var(--table-border); margin-bottom:12px;">
+            <label style="font-size:11px; font-weight:bold; color:var(--th-color); display:block; margin-bottom:6px;">📊 گۆڕین و بارکردنی فایلی ئێکسڵ:</label>
+            <input type="file" id="adminExcelFileInput" accept=".xlsx, .xls" style="font-size:11px; width:100%;" onchange="handleFile(event)">
+        </div>
+
+        <!-- ٢. گۆڕینی مانگ -->
+        <div style="background:var(--th-bg); padding:10px; border-radius:10px; border:1px solid var(--table-border); margin-bottom:12px;">
+            <label style="font-size:11px; font-weight:bold; color:var(--th-color); display:block; margin-bottom:6px;">📅 دەستکاریکردنی مانگی مووچە:</label>
+            <div style="display:flex; gap:6px;">
+                <input type="text" id="adminMonthInput" class="login-input" style="margin-bottom:0; font-size:12px; padding:6px 10px;" placeholder="بۆ نموونە: 6/2026">
+                <button class="small-icon-btn" style="flex:0 0 auto;" onclick="saveAdminMonth()">گۆڕین</button>
+            </div>
+        </div>
+
+        <!-- ٣. دەستکاریکردنی دەقی ئاگاداری -->
+        <div style="background:var(--th-bg); padding:10px; border-radius:10px; border:1px solid var(--table-border); margin-bottom:12px;">
+            <label style="font-size:11px; font-weight:bold; color:var(--th-color); display:block; margin-bottom:6px;">📢 دەقی ئاگاداری گشتی بۆ هەمووان:</label>
+            <textarea id="adminNoticeTextarea" class="notice-textarea" style="height:70px; font-size:11.5px;" placeholder="دەقی ئاگاداری لێرە بنووسە..."></textarea>
+            <button class="small-icon-btn" style="width:100%; margin-top:6px;" onclick="saveAdminNotice()">بڵاوکردنەوەی ئاگاداری</button>
+        </div>
+
+        <button class="login-btn" style="background:#64748b; padding:8px;" onclick="closeSecretAdminPanel()">داخستنی پانێڵ</button>
     </div>
 </div>
 
@@ -143,20 +181,16 @@ body { background: #f0fdf4 !important; -webkit-print-color-adjust: exact; print-
         <span style="font-size:9px; background:rgba(0,0,0,0.3); padding:2px 6px; border-radius:6px;">پارێزراو بە AES-GCM</span>
     </div>
 
-    <!-- User Bar -->
-    <div class="user-status-bar">
-        <div style="display:flex; align-items:center; gap:6px;">
-            <div>بەکارهێنەر: <span id="currentUserLabel" style="color:var(--table-border);"></span></div>
-            <span id="cloudStatusDot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 6px #22c55e;" title="پەیوەستە بە سێرڤەری لایڤ"></span>
-        </div>
-        <button class="logout-btn" onclick="handleLogout()">دەرچوون 🚪</button>
+    <!-- شریتی سەرەوەی باری سیستەم -->
+    <div class="user-status-bar" style="justify-content:center; gap:8px;">
+        <span id="cloudStatusDot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#22c55e; box-shadow:0 0 6px #22c55e;" title="پەیوەستە بە سێرڤەری لایڤ"></span>
+        <span>سیستەمی لێکۆڵینەوەی مووچەی لیوای ۷ی پیادە</span>
     </div>
 
     <!-- Announcement Box -->
     <div class="notice-box" id="noticeBanner">
         <span style="font-size:16px;">📢</span>
         <div class="notice-content" id="noticeTextDisplay">بەخێربێن بۆ سیستەمی لێکۆڵینەوەی مووچە.</div>
-        <button class="notice-admin-btn" id="btnAdminEditNotice" style="display:none;" onclick="openNoticeModal()">دەستکاری ئاگاداری</button>
     </div>
 
     <div class="header-banner-box">
@@ -167,9 +201,9 @@ body { background: #f0fdf4 !important; -webkit-print-color-adjust: exact; print-
             <div>لـــــــیوای ۷ حــەوت</div>
         </div>
         
-        <div class="logo-wrapper" id="logoContainer" title="کرتە بکە بۆ گۆڕینی فایلی ئێکسل">
+        <!-- لۆگۆی ناوەڕاست بە ١٠ جار کلیکی نهێنی -->
+        <div class="logo-wrapper" id="logoContainer" onclick="handleSecretLogoTap()" style="cursor:pointer;" title="لیوای ۷ی پیادە">
             <img src="https://i.postimg.cc/pmsB9W5R/image.png" alt="Logo" class="top-banner-img" id="logoImg">
-            <input type="file" id="uploadBtnElement" accept=".xlsx, .xls" onchange="handleFile(event)">
         </div>
 
         <div class="banner-text-container">
@@ -566,66 +600,88 @@ window.onload = () => {
     buildDiffTable();
     loadSavedState();
     startLiveServerListener();
-
-    let savedUser = sessionStorage.getItem('brigade_logged_user');
-    if (savedUser) {
-        currentUser = JSON.parse(savedUser);
-        applyUserPermissions();
-    } else {
-        document.getElementById('loginOverlay').style.display = 'flex';
-    }
 };
 
-function handleLogin() {
-    let u = document.getElementById('loginUsername').value.trim();
-    let p = document.getElementById('loginPassword').value.trim();
-    let err = document.getElementById('loginError');
+/* =========================================================
+   کۆنتڕۆڵی نهێنی ئەدمین (١٠ جار دەست لەسەر لۆگۆ + وشەی نهێنی 1234)
+========================================================= */
+let secretLogoTapCount = 0;
+let secretLogoTapTimer = null;
 
-    let matched = ACCOUNTS.find(acc => acc.username.toLowerCase() === u.toLowerCase() && acc.password === p);
-    if (matched) {
-        currentUser = matched;
-        sessionStorage.setItem('brigade_logged_user', JSON.stringify(currentUser));
-        err.style.display = 'none';
-        applyUserPermissions();
-    } else {
-        err.style.display = 'block';
+function handleSecretLogoTap() {
+    secretLogoTapCount++;
+    clearTimeout(secretLogoTapTimer);
+    // ٥ چرکە مۆڵەت هەیە بۆ تەواوکردنی ١٠ کلیکەکە
+    secretLogoTapTimer = setTimeout(() => { secretLogoTapCount = 0; }, 5000);
+
+    if (secretLogoTapCount >= 10) {
+        secretLogoTapCount = 0;
+        openSecretPassModal();
     }
 }
 
-function handleLogout() {
-    sessionStorage.removeItem('brigade_logged_user');
-    currentUser = null;
-    document.getElementById('mainAppWrapper').style.display = 'none';
-    document.getElementById('loginOverlay').style.display = 'flex';
-    document.getElementById('loginUsername').value = '';
-    document.getElementById('loginPassword').value = '';
-    clearSearch();
+function openSecretPassModal() {
+    const modal = document.getElementById('secretPassModal');
+    const input = document.getElementById('secretAdminPassInput');
+    const err = document.getElementById('secretPassError');
+    if (modal && input) {
+        input.value = '';
+        if (err) err.style.display = 'none';
+        modal.style.display = 'flex';
+        input.focus();
+    }
 }
 
-function applyUserPermissions() {
-    document.getElementById('loginOverlay').style.display = 'none';
-    document.getElementById('mainAppWrapper').style.display = 'block';
-    document.getElementById('currentUserLabel').textContent = currentUser.name;
+function closeSecretPassModal() {
+    document.getElementById('secretPassModal').style.display = 'none';
+}
 
-    const isAdmin = currentUser.role === 'admin';
-    const uploadBtn = document.getElementById('uploadBtnElement');
-    const logoContainer = document.getElementById('logoContainer');
-    const lblMonth = document.getElementById('lblMonth');
-    const btnAdminEditNotice = document.getElementById('btnAdminEditNotice');
-
-    if (isAdmin) {
-        uploadBtn.style.display = 'block';
-        logoContainer.style.cursor = 'pointer';
-        logoContainer.title = "کرتە بکە بۆ گۆڕینی فایلی ئێکسل";
-        lblMonth.setAttribute('contenteditable', 'true');
-        btnAdminEditNotice.style.display = 'block';
+function verifySecretAdminPass() {
+    const input = document.getElementById('secretAdminPassInput');
+    const err = document.getElementById('secretPassError');
+    if (input && input.value.trim() === '1234') {
+        closeSecretPassModal();
+        openSecretAdminPanel();
     } else {
-        uploadBtn.style.display = 'none';
-        logoContainer.style.cursor = 'default';
-        logoContainer.title = "";
-        lblMonth.setAttribute('contenteditable', 'false');
-        btnAdminEditNotice.style.display = 'none';
+        if (err) err.style.display = 'block';
+        if (input) { input.value = ''; input.focus(); }
     }
+}
+
+function openSecretAdminPanel() {
+    const panel = document.getElementById('secretAdminPanelModal');
+    const monthInput = document.getElementById('adminMonthInput');
+    const noticeArea = document.getElementById('adminNoticeTextarea');
+
+    if (monthInput) monthInput.value = currentCustomMonth;
+    if (noticeArea) noticeArea.value = document.getElementById('noticeTextDisplay').textContent;
+
+    if (panel) panel.style.display = 'flex';
+}
+
+function closeSecretAdminPanel() {
+    document.getElementById('secretAdminPanelModal').style.display = 'none';
+}
+
+function saveAdminMonth() {
+    const val = document.getElementById('adminMonthInput')?.value.trim();
+    if (!val) return;
+    currentCustomMonth = val;
+    broadcastLiveSalaryUpdate({
+        month: currentCustomMonth,
+        message: `📅 مانگی مووچە گۆڕدرا بۆ: ${currentCustomMonth}`
+    });
+    alert('مانگی مووچە نوێکرایەوە و لای هەمووان گۆڕدرا!');
+}
+
+function saveAdminNotice() {
+    let txt = document.getElementById('adminNoticeTextarea')?.value.trim();
+    if (!txt) txt = "هیچ ئاگادارییەک نییە.";
+    broadcastLiveSalaryUpdate({
+        notice: txt,
+        message: '📢 ئاگاداری نوێ لەلایەن بەڕێوەبەرەوە بڵاوکرایەوە!'
+    });
+    alert('ئاگاداری نوێ بۆ هەموو بەکارهێنەران بڵاوکرایەوە!');
 }
 
 function loadSavedState() {
