@@ -141,9 +141,14 @@ body { background: #f0fdf4 !important; -webkit-print-color-adjust: exact; print-
             <button onclick="closeSecretAdminPanel()" style="background:none; border:none; color:#ef4444; font-size:16px; cursor:pointer; font-weight:bold;">✕</button>
         </div>
 
-        <!-- ١. بارکردنی فایلی ئێکسڵ -->
+        <!-- ١. دانانی لینکی ئێکسڵ یان بارکردنی فایل -->
         <div style="background:var(--th-bg); padding:10px; border-radius:10px; border:1px solid var(--table-border); margin-bottom:12px;">
-            <label style="font-size:11px; font-weight:bold; color:var(--th-color); display:block; margin-bottom:6px;">📊 گۆڕین و بارکردنی فایلی ئێکسڵ:</label>
+            <label style="font-size:11px; font-weight:bold; color:var(--th-color); display:block; margin-bottom:6px;">🔗 دانانی لینکی فایلی ئێکسڵ (بۆ ئەوەی لای هەمووان بە یەک چرکە کار بکات):</label>
+            <div style="display:flex; gap:6px; margin-bottom:8px;">
+                <input type="text" id="adminExcelUrlInput" class="login-input" style="margin-bottom:0; font-size:11px; padding:6px 10px; text-align:left; direction:ltr;" placeholder="https://... لینکی ئێکسڵ لێرە دابنێ">
+                <button class="small-icon-btn" style="flex:0 0 auto; background:#16a34a; color:#fff;" onclick="saveAdminExcelUrl()">ناردنی لینک</button>
+            </div>
+            <div style="font-size:10px; color:var(--text-color); opacity:0.8; margin-bottom:6px;">یان هەڵبژاردنی فایل لە مۆبایلەکەت:</div>
             <input type="file" id="adminExcelFileInput" accept=".xlsx, .xls" style="font-size:11px; width:100%;" onchange="handleFile(event)">
         </div>
 
@@ -390,41 +395,115 @@ function decompressSalaryData(jsonStr) {
     return parsed;
 }
 
-// ناردنی دەستبەجێ بە هاوپێچی فەرمی (Attachment) کە لەسەر هەموو هێڵێک بەردەستە
-async function broadcastLiveSalaryUpdate(payload) {
-    applyPayloadLocally(payload);
-    try {
-        if (payload.headers && payload.rows) {
-            // ناردنی فایلی ئێکسڵ
-            const compressed = compressSalaryData(payload.headers, payload.rows);
-            const encrypted = await encryptPayload(compressed);
-            const blob = new Blob([encrypted], { type: 'text/plain' });
+// خوێندنەوە و دابەزاندنی ئێکسڵ لە ڕێگەی لینک لەسەر هەموو مۆبایلەکان
+async function loadExcelFromUrl(rawUrl, showToast = true) {
+    if (!rawUrl) return false;
+    let targetUrl = rawUrl.trim();
 
-            await fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}`, {
-                method: 'POST',
-                headers: {
-                    'Title': encodeURIComponent('فایلی نوێی مووچە'),
-                    'Priority': 'urgent',
-                    'Tags': 'chart_with_upwards_trend,floppy_disk',
-                    'Filename': 'salary_data.vault',
-                    'X-Month': encodeURIComponent(payload.month || currentCustomMonth)
-                },
-                body: blob
-            });
-        } else {
-            // ناردنی دەقی مانگ یان ئاگاداری
-            await fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}`, {
-                method: 'POST',
-                headers: { 'Title': 'UPDATE_EVENT', 'Priority': 'urgent' },
-                body: JSON.stringify(payload)
-            });
+    // گۆڕینی لینکی Dropbox بۆ دانلۆدی ڕاستەوخۆ
+    if (targetUrl.includes('dropbox.com')) {
+        targetUrl = targetUrl.replace('dl=0', 'raw=1').replace('?dl=1', '?raw=1');
+        if (!targetUrl.includes('raw=1')) targetUrl += (targetUrl.includes('?') ? '&' : '?') + 'raw=1';
+    }
+    // گۆڕینی لینکی Google Drive بۆ دانلۆدی ڕاستەوخۆ
+    if (targetUrl.includes('drive.google.com')) {
+        const match = targetUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) {
+            targetUrl = `https://drive.google.com/uc?export=download&id=${match[1]}`;
         }
-    } catch(err) {
-        console.warn('Sync broadcast warning:', err);
+    }
+
+    if (showToast) showLiveToast("خەریکی وەرگرتنی فایلی نوێی مووچەیە لە لینکەوە...");
+
+    // بەکارهێنانی پرۆکسی بۆ ئەوەی لەسەر هەموو هێڵەکانی ئینتەرنێتی کوردستان بێ کێشە کار بکات
+    const tryUrls = [
+        targetUrl,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
+        `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`
+    ];
+
+    let arrayBuffer = null;
+    for (let u of tryUrls) {
+        try {
+            const res = await fetch(u);
+            if (res.ok) {
+                arrayBuffer = await res.arrayBuffer();
+                if (arrayBuffer && arrayBuffer.byteLength > 100) break;
+            }
+        } catch(e) {}
+    }
+
+    if (arrayBuffer) {
+        try {
+            let d = new Uint8Array(arrayBuffer);
+            let wb = XLSX.read(d, {type:'array'});
+            let ws = wb.Sheets[wb.SheetNames[0]];
+            let json = XLSX.utils.sheet_to_json(ws, {header:1});
+            if (json && json.length > 0) {
+                headersList = json[0];
+                globalData = [];
+                for (let i = 1; i < json.length; i++) {
+                    let row = json[i];
+                    let obj = {};
+                    headersList.forEach((h, idx) => { obj[h] = row[idx] !== undefined ? row[idx] : ""; });
+                    globalData.push(obj);
+                }
+                // جێگیرکردنی لەناو مۆبایل تا هەرگیز ناسڕێتەوە
+                localStorage.setItem('brigade_saved_headers', JSON.stringify(headersList));
+                localStorage.setItem('brigade_saved_data', JSON.stringify(globalData));
+                localStorage.setItem('brigade_saved_excel_url', rawUrl);
+                filterSearch();
+                showLiveToast(`📊 فایلی مووچە بە سەرکەوتوویی بۆ (${globalData.length}) پێشمەرگە جێگیرکرا!`);
+                return true;
+            }
+        } catch(err) {
+            console.error("XLSX error:", err);
+        }
+    }
+    return false;
+}
+
+// کاتێک ئەدمین لینک دادەنێت
+async function saveAdminExcelUrl() {
+    const input = document.getElementById('adminExcelUrlInput');
+    const url = input ? input.value.trim() : '';
+    if (!url) {
+        alert('تکایە لینکێک بنووسە!');
+        return;
+    }
+    document.getElementById('loadingOverlay').style.display = 'flex';
+    document.getElementById('loadingText').textContent = "پشکنینی لینک و خوێندنەوەی دەکرێت...";
+
+    const success = await loadExcelFromUrl(url, false);
+    document.getElementById('loadingOverlay').style.display = 'none';
+
+    if (success) {
+        // ناردنی لینکەکە بۆ هەموو مۆبایلەکان لە کەمتر لە ٠.١ چرکەدا
+        broadcastLiveSalaryUpdate({
+            excelUrl: url,
+            month: currentCustomMonth,
+            message: '📊 فایلی نوێی مووچە لە ڕێگەی لینکەوە بۆ هەمووان نوێکرایەوە!'
+        });
+        alert(`سەرکەوتوو بوو! لیستەکە بۆ (${globalData.length}) پێشمەرگە خوێندرایەوە و بۆ هەمووان جێگیرکرا.`);
+    } else {
+        alert('نەتوانرا فایلی ئێکسڵ لەم لینکەوە بخوێندرێتەوە. دڵنیابە لەوەی فایلی ئێکسڵە (.xlsx) یان لینکی شەیرکراوە.');
     }
 }
 
-// جێگیرکردنی داتاکان لەناو مۆبایل تا هەرگیز نەچێت
+// ناردنی ڕاستەوخۆ بۆ هەموو بەکارهێنەران
+async function broadcastLiveSalaryUpdate(payload) {
+    applyPayloadLocally(payload);
+    try {
+        await fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}`, {
+            method: 'POST',
+            headers: { 'Title': 'DATA_SYNC', 'Priority': 'urgent' },
+            body: JSON.stringify(payload)
+        });
+    } catch(err) {
+        console.warn('Sync error:', err);
+    }
+}
+
 function applyPayloadLocally(data) {
     if (!data) return;
     let changed = false;
@@ -445,7 +524,7 @@ function applyPayloadLocally(data) {
         changed = true;
     }
 
-    if (data.headers && data.rows && data.rows.length > 0) {
+    if (data.headers && data.rows) {
         headersList = data.headers;
         globalData = data.rows;
         localStorage.setItem('brigade_saved_headers', JSON.stringify(headersList));
@@ -473,66 +552,43 @@ function showLiveToast(msg) {
     setTimeout(() => { toast.style.display = 'none'; }, 4500);
 }
 
-// داگرتن و شیکردنەوەی دەستبەجێ
-async function processCloudIncomingItem(item) {
-    if (!item) return;
-
-    // ١. ئەگەر فایلی ئێکسڵ بوو بە هاوپێچ
-    if (item.attachment && item.attachment.url) {
-        try {
-            showLiveToast("خەریکی وەرگرتنی فایلی نوێی مووچەیە...");
-            const res = await fetch(item.attachment.url);
-            const cipherText = await res.text();
-            if (cipherText) {
-                const decryptedStr = await decryptPayload(cipherText.trim());
-                if (decryptedStr) {
-                    const decompressed = decompressSalaryData(decryptedStr);
-                    let mName = currentCustomMonth;
-                    try { mName = decodeURIComponent(item.headers?.['x-month'] || currentCustomMonth); } catch(e){}
-                    applyPayloadLocally({
-                        month: mName,
-                        headers: decompressed.headers,
-                        rows: decompressed.rows,
-                        message: '📊 فایلی نوێی مووچە بە سەرکەوتوویی لەسەر مۆبایلەکەت جێگیر بوو!'
-                    });
-                }
-            }
-        } catch(e) {}
-    } 
-    // ٢. ئەگەر نووسین یان دەستکاری مانگ و ئاگاداری بوو
-    else if (item.message) {
-        try {
-            const parsed = JSON.parse(item.message);
-            applyPayloadLocally(parsed);
-        } catch(e){}
+// گوێگرتنی هەمیشەیی بۆ وەرگرتنی لینک و داتاکان
+async function handleIncomingCloudEvent(packet) {
+    if (!packet) return;
+    if (packet.excelUrl) {
+        const currentSavedUrl = localStorage.getItem('brigade_saved_excel_url');
+        if (packet.excelUrl !== currentSavedUrl || globalData.length === 0) {
+            await loadExcelFromUrl(packet.excelUrl, true);
+        }
     }
+    applyPayloadLocally(packet);
 }
 
-// گوێگرتنی دەستبەجێ لە نوێکردنەوەکانی ئەدمین
 function startLiveServerListener() {
-    // پشکنینی دوایین فایلی هەبوو لە کاتی کردنەوەی بەرنامە
+    // هێنانی دوایین لینکی هەبوو لە کاتی کردنەوەی بەرنامە
     fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}/json?poll=1&since=all`).then(r => r.text()).then(async text => {
         if (!text) return;
         const lines = text.trim().split('\n');
         for (let i = lines.length - 1; i >= 0; i--) {
             try {
                 const item = JSON.parse(lines[i]);
-                if (item && (item.attachment || item.message)) {
-                    await processCloudIncomingItem(item);
+                if (item && item.message) {
+                    const packet = JSON.parse(item.message);
+                    await handleIncomingCloudEvent(packet);
                     break;
                 }
             } catch(e){}
         }
     }).catch(()=>{});
 
-    // گوێگرتنی ڕاستەوخۆ و بێ پچڕان (Live SSE)
     try {
         const sse = new EventSource(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}/sse`);
         sse.onmessage = async (e) => {
             try {
                 const data = JSON.parse(e.data);
-                if (data && (data.attachment || data.message)) {
-                    await processCloudIncomingItem(data);
+                if (data && data.message) {
+                    const packet = JSON.parse(data.message);
+                    await handleIncomingCloudEvent(packet);
                 }
             } catch(err){}
         };
