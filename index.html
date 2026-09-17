@@ -395,42 +395,56 @@ function decompressSalaryData(jsonStr) {
     return parsed;
 }
 
-// خوێندنەوە و دابەزاندنی ئێکسڵ لە ڕێگەی لینک لەسەر هەموو مۆبایلەکان
+// خوێندنەوە و دابەزاندنی ئێکسڵ لە ڕێگەی لینکی گووگڵ درایڤ و هەموو ماڵپەڕەکان
 async function loadExcelFromUrl(rawUrl, showToast = true) {
     if (!rawUrl) return false;
     let targetUrl = rawUrl.trim();
+    let downloadCandidates = [];
 
-    // گۆڕینی لینکی Dropbox بۆ دانلۆدی ڕاستەوخۆ
-    if (targetUrl.includes('dropbox.com')) {
+    // ناسینەوەی فەرمی لینکی گووگڵ درایڤ و شێت (وەک ئەم لینکەی تۆ داتناوە)
+    if (targetUrl.includes('google.com')) {
+        const match = targetUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || targetUrl.match(/id=([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) {
+            const fileId = match[1];
+            downloadCandidates.push(`https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`);
+            downloadCandidates.push(`https://drive.google.com/uc?export=download&id=${fileId}`);
+        }
+    } else if (targetUrl.includes('dropbox.com')) {
         targetUrl = targetUrl.replace('dl=0', 'raw=1').replace('?dl=1', '?raw=1');
         if (!targetUrl.includes('raw=1')) targetUrl += (targetUrl.includes('?') ? '&' : '?') + 'raw=1';
-    }
-    // گۆڕینی لینکی Google Drive بۆ دانلۆدی ڕاستەوخۆ
-    if (targetUrl.includes('drive.google.com')) {
-        const match = targetUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
-        if (match && match[1]) {
-            targetUrl = `https://drive.google.com/uc?export=download&id=${match[1]}`;
-        }
+        downloadCandidates.push(targetUrl);
+    } else {
+        downloadCandidates.push(targetUrl);
     }
 
-    if (showToast) showLiveToast("خەریکی وەرگرتنی فایلی نوێی مووچەیە لە لینکەوە...");
-
-    // بەکارهێنانی پرۆکسی بۆ ئەوەی لەسەر هەموو هێڵەکانی ئینتەرنێتی کوردستان بێ کێشە کار بکات
-    const tryUrls = [
-        targetUrl,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-        `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`
-    ];
+    if (showToast) showLiveToast("خەریکی وەرگرتنی فایلی مووچەیە لە گووگڵ درایڤ...");
 
     let arrayBuffer = null;
-    for (let u of tryUrls) {
-        try {
-            const res = await fetch(u);
-            if (res.ok) {
-                arrayBuffer = await res.arrayBuffer();
-                if (arrayBuffer && arrayBuffer.byteLength > 100) break;
-            }
-        } catch(e) {}
+    for (let candidate of downloadCandidates) {
+        const tryUrls = [
+            `https://corsproxy.io/?url=${encodeURIComponent(candidate)}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(candidate)}`,
+            candidate
+        ];
+
+        for (let u of tryUrls) {
+            try {
+                const res = await fetch(u);
+                if (res.ok) {
+                    const buf = await res.arrayBuffer();
+                    // پشکنین: دڵنیابوونەوە لەوەی فایلی ئێکسڵە نەک پەڕەی هەڵەی گووگڵ
+                    if (buf && buf.byteLength > 500) {
+                        const firstByte = new Uint8Array(buf.slice(0, 1))[0];
+                        // ئەگەر پیتەکە پیتەکانی پەڕەی HTML نەبێت (وەک <)
+                        if (firstByte !== 60) {
+                            arrayBuffer = buf;
+                            break;
+                        }
+                    }
+                }
+            } catch(e) {}
+        }
+        if (arrayBuffer) break;
     }
 
     if (arrayBuffer) {
@@ -448,12 +462,11 @@ async function loadExcelFromUrl(rawUrl, showToast = true) {
                     headersList.forEach((h, idx) => { obj[h] = row[idx] !== undefined ? row[idx] : ""; });
                     globalData.push(obj);
                 }
-                // جێگیرکردنی لەناو مۆبایل تا هەرگیز ناسڕێتەوە
                 localStorage.setItem('brigade_saved_headers', JSON.stringify(headersList));
                 localStorage.setItem('brigade_saved_data', JSON.stringify(globalData));
                 localStorage.setItem('brigade_saved_excel_url', rawUrl);
                 filterSearch();
-                showLiveToast(`📊 فایلی مووچە بە سەرکەوتوویی بۆ (${globalData.length}) پێشمەرگە جێگیرکرا!`);
+                showLiveToast(`📊 فایلی مووچە بۆ (${globalData.length}) پێشمەرگە جێگیرکرا!`);
                 return true;
             }
         } catch(err) {
@@ -472,21 +485,20 @@ async function saveAdminExcelUrl() {
         return;
     }
     document.getElementById('loadingOverlay').style.display = 'flex';
-    document.getElementById('loadingText').textContent = "پشکنینی لینک و خوێندنەوەی دەکرێت...";
+    document.getElementById('loadingText').textContent = "فایلەکە لە گووگڵ درایڤ دەخوێندرێتەوە...";
 
     const success = await loadExcelFromUrl(url, false);
     document.getElementById('loadingOverlay').style.display = 'none';
 
     if (success) {
-        // ناردنی لینکەکە بۆ هەموو مۆبایلەکان لە کەمتر لە ٠.١ چرکەدا
         broadcastLiveSalaryUpdate({
             excelUrl: url,
             month: currentCustomMonth,
-            message: '📊 فایلی نوێی مووچە لە ڕێگەی لینکەوە بۆ هەمووان نوێکرایەوە!'
+            message: '📊 فایلی نوێی مووچە لە گووگڵ درایڤەوە بۆ هەمووان نوێکرایەوە!'
         });
-        alert(`سەرکەوتوو بوو! لیستەکە بۆ (${globalData.length}) پێشمەرگە خوێندرایەوە و بۆ هەمووان جێگیرکرا.`);
+        alert(`سەرکەوتوو بوو! فایلی مووچەی (${globalData.length}) پێشمەرگە لە گووگڵ درایڤەوە خوێندرایەوە و بۆ هەمووان جێگیرکرا.`);
     } else {
-        alert('نەتوانرا فایلی ئێکسڵ لەم لینکەوە بخوێندرێتەوە. دڵنیابە لەوەی فایلی ئێکسڵە (.xlsx) یان لینکی شەیرکراوە.');
+        alert('⚠️ نەتوانرا پەیوەندی بکرێت!\nتکایە بڕۆ ئەپی Google Drive و دەسەڵاتی فایلەکە بگۆڕە بۆ (Anyone with the link / أي شخص لديه الرابط)، چونکە ئێستا فایلەکەت داخراوە.');
     }
 }
 
