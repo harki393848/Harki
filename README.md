@@ -1,2 +1,0 @@
-# Harki
-Sjdidi
