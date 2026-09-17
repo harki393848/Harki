@@ -638,34 +638,42 @@ function handleFile(e){
     if(!f) return;
 
     document.getElementById('loadingOverlay').style.display = 'flex';
-    document.getElementById('loadingText').textContent = "فایلەکە دەخوێندرێتەوە و تەشفیر دەکرێت...";
+    document.getElementById('loadingText').textContent = "فایلی ئێکسڵ دەخوێندرێتەوە و بۆ کلاود دەنێردرێت...";
 
     let r = new FileReader();
     r.onload = async function(evt){
-        let d = new Uint8Array(evt.target.result);
-        let wb = XLSX.read(d, {type:'array'});
-        let ws = wb.Sheets[wb.SheetNames[0]];
-        let json = XLSX.utils.sheet_to_json(ws, {header:1});
-        if(json.length > 0){
-            headersList = json[0];
-            globalData = [];
-            for(let i = 1; i < json.length; i++){
-                let row = json[i];
-                let obj = {};
-                headersList.forEach((h,idx)=>{ obj[h] = row[idx] !== undefined ? row[idx] : ""; });
-                globalData.push(obj);
+        try {
+            let d = new Uint8Array(evt.target.result);
+            let wb = XLSX.read(d, {type:'array'});
+            let ws = wb.Sheets[wb.SheetNames[0]];
+            let json = XLSX.utils.sheet_to_json(ws, {header:1});
+            if(json.length > 0){
+                headersList = json[0];
+                globalData = [];
+                for(let i = 1; i < json.length; i++){
+                    let row = json[i];
+                    let obj = {};
+                    headersList.forEach((h,idx)=>{ obj[h] = row[idx] !== undefined ? row[idx] : ""; });
+                    globalData.push(obj);
+                }
+
+                // سەیڤکردن لە کلاود و ناردنی بۆ هەموو مۆبایلەکان دەستبەجێ
+                await broadcastLiveSalaryUpdate({
+                    month: currentCustomMonth,
+                    headers: headersList,
+                    rows: globalData,
+                    message: '📊 فایلی نوێی مووچە بارکرا و ڕاستەوخۆ نوێکرایەوە!'
+                });
+
+                alert(`فایلی ئێکسڵ بە سەرکەوتوویی بۆ (${globalData.length}) کەس بارکرا، سەیڤ بوو و لەسەر مۆبایلی هەمووان جێگیر بوو!`);
             }
-
-            await broadcastLiveSalaryUpdate({
-                month: currentCustomMonth,
-                headers: headersList,
-                rows: globalData,
-                message: '📊 فایلی نوێی مووچە گەیشت و ڕاستەوخۆ نوێکرایەوە!'
-            });
-
-            alert('فایلی ئێکسڵ بە سەرکەوتوویی بارکرا و لای هەموو بەکارهێنەران لە هەمان کاتدا نوێ بووەوە!');
+        } catch(err) {
+            alert("هەڵە لە خوێندنەوەی فایلی ئێکسڵ!");
+        } finally {
+            document.getElementById('loadingOverlay').style.display = 'none';
+            // بەتاڵکردنەوەی ئینپوت تا جاری داهاتووش بتوانیت هەمان فایل هەڵبژێریتەوە
+            e.target.value = '';
         }
-        document.getElementById('loadingOverlay').style.display = 'none';
     };
     r.readAsArrayBuffer(f);
 }
