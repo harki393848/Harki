@@ -289,21 +289,181 @@ let currentUser = null;
 let globalData = [], headersList = [], currentCustomMonth = "6/2026", savedScrollY = 0;
 const targetColumnIndex = 1;
 
-// Setup Live Sync with BroadcastChannel (Cross-tab instant sync)
-const syncChannel = new BroadcastChannel('brigade_salary_sync');
-syncChannel.onmessage = (event) => {
-    if (event.data && event.data.type === 'REFRESH_ALL') {
-        loadSavedState();
-        filterSearch();
-    }
-};
+/* =========================================================
+   ماتۆڕی پاراستن و هاوکاتکردنی ڕاستەوخۆ (Live Cloud Sync)
+========================================================= */
+const CLOUD_SYNC_TOPIC = "brigade7_salary_vault_live_2026";
+const MILITARY_SECRET_KEY = "Peshmerga#Brigade7$Key2026";
 
-window.addEventListener('storage', (e) => {
-    if (e.key === 'brigade_saved_data' || e.key === 'brigade_custom_month' || e.key === 'brigade_announcement') {
-        loadSavedState();
-        filterSearch();
+// دروستکردنی کلیلی تەشفیرکردنی کریپتۆ بە SHA-256
+async function getCryptoKey() {
+    const enc = new TextEncoder();
+    const keyData = await crypto.subtle.digest("SHA-256", enc.encode(MILITARY_SECRET_KEY));
+    return crypto.subtle.importKey("raw", keyData, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+}
+
+// تەشفیرکردنی داتا بە AES-GCM پێش ناردن بۆ ئینتەرنێت
+async function encryptPayload(plainText) {
+    try {
+        const key = await getCryptoKey();
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const enc = new TextEncoder();
+        const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv }, key, enc.encode(plainText));
+        const combined = new Uint8Array(iv.byteLength + ciphertext.byteLength);
+        combined.set(iv, 0);
+        combined.set(new Uint8Array(ciphertext), iv.byteLength);
+        let binary = '';
+        for (let i = 0; i < combined.length; i++) binary += String.fromCharCode(combined[i]);
+        return btoa(binary);
+    } catch(e) {
+        return btoa(encodeURIComponent(plainText));
     }
-});
+}
+
+// شیکردنەوەی تەشفیر لە کاتی وەرگرتنی داتا
+async function decryptPayload(cipherBase64) {
+    try {
+        const binary = atob(cipherBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const iv = bytes.slice(0, 12);
+        const data = bytes.slice(12);
+        const key = await getCryptoKey();
+        const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv }, key, data);
+        return new TextDecoder().decode(decrypted);
+    } catch(e) {
+        try { return decodeURIComponent(atob(cipherBase64)); } catch(err) { return null; }
+    }
+}
+
+// ناردنی دەستبەجێ بۆ کلاود (پشتگیری تەواوی فایلە گەورەکانی ئێکسڵ)
+async function broadcastLiveSalaryUpdate(payload) {
+    applyPayloadLocally(payload);
+    try {
+        const jsonStr = JSON.stringify(payload);
+        const encrypted = await encryptPayload(jsonStr);
+        await fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}`, {
+            method: 'POST',
+            headers: { 
+                'Title': 'DATA_SYNC', 
+                'Priority': 'urgent',
+                'Filename': 'salary_vault.enc'
+            },
+            body: encrypted
+        });
+    } catch(err) {
+        console.warn('Network sync warning:', err);
+    }
+}
+
+// دەرهێنانی داتا جا چ کورت بێت یان فایلی گەورەی هاوپێچ
+async function extractPayloadFromEvent(data) {
+    if (!data) return null;
+    let rawEncrypted = null;
+    if (data.attachment && data.attachment.url) {
+        try {
+            const fileRes = await fetch(data.attachment.url);
+            rawEncrypted = await fileRes.text();
+        } catch(e) {}
+    } else if (data.message) {
+        rawEncrypted = data.message;
+    }
+    if (!rawEncrypted) return null;
+    try {
+        const decrypted = await decryptPayload(rawEncrypted);
+        return decrypted ? JSON.parse(decrypted) : null;
+    } catch(e) {
+        return null;
+    }
+}
+
+// جێبەجێکردنی داتاکان لەسەر شاشە دەستبەجێ
+function applyPayloadLocally(data) {
+    if (!data) return;
+    let changed = false;
+
+    if (data.month) {
+        currentCustomMonth = data.month;
+        localStorage.setItem('brigade_custom_month', currentCustomMonth);
+        const lblM = document.getElementById('lblMonth');
+        if (lblM) lblM.textContent = currentCustomMonth;
+        document.title = `لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}`;
+        changed = true;
+    }
+
+    if (data.notice !== undefined) {
+        localStorage.setItem('brigade_announcement', data.notice);
+        const nd = document.getElementById('noticeTextDisplay');
+        if (nd) nd.textContent = data.notice;
+        changed = true;
+    }
+
+    if (data.headers && data.rows) {
+        headersList = data.headers;
+        globalData = data.rows;
+        localStorage.setItem('brigade_saved_headers', JSON.stringify(headersList));
+        localStorage.setItem('brigade_saved_data', JSON.stringify(globalData));
+        changed = true;
+    }
+
+    if (changed) {
+        filterSearch();
+        showLiveToast(data.message || 'داتاکان ڕاستەوخۆ نوێکرانەوە!');
+    }
+}
+
+function showLiveToast(msg) {
+    const toast = document.getElementById('liveSyncToast');
+    const txt = document.getElementById('liveSyncMsg');
+    if (!toast || !txt) return;
+    txt.textContent = msg;
+    toast.style.display = 'flex';
+    try {
+        const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+        audio.volume = 0.35;
+        audio.play().catch(()=>{});
+    } catch(e){}
+    setTimeout(() => { if (toast) toast.style.display = 'none'; }, 4500);
+}
+
+// گوێگرتنی دەستبەجێ لە نوێکردنەوەکانی ئەدمین لە کلاودەوە
+function startLiveServerListener() {
+    fetch(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}/json?poll=1&since=all`).then(r => r.text()).then(async text => {
+        if (!text) return;
+        const lines = text.trim().split('\n');
+        for (let i = lines.length - 1; i >= 0; i--) {
+            try {
+                const item = JSON.parse(lines[i]);
+                const payload = await extractPayloadFromEvent(item);
+                if (payload) {
+                    applyPayloadLocally(payload);
+                    break;
+                }
+            } catch(e){}
+        }
+    }).catch(()=>{});
+
+    try {
+        const sse = new EventSource(`https://ntfy.sh/${CLOUD_SYNC_TOPIC}/sse`);
+        sse.onmessage = async (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                const payload = await extractPayloadFromEvent(data);
+                if (payload) {
+                    applyPayloadLocally(payload);
+                }
+            } catch(err){}
+        };
+        sse.onopen = () => {
+            const dot = document.getElementById('cloudStatusDot');
+            if (dot) dot.style.background = '#22c55e';
+        };
+        sse.onerror = () => {
+            const dot = document.getElementById('cloudStatusDot');
+            if (dot) dot.style.background = '#eab308';
+        };
+    } catch(e){}
+}
 
 const ranksSheetData = [
     ["ليوا", "1,500,000", "605,000", "2,000,000", "4,105,000", "105,000", "", "105,000", "3,980,250", "100", "1,500", "1,000", "2,600", "3,977,650"],
@@ -357,9 +517,8 @@ window.onload = () => {
     buildRanksTable();
     buildDiffTable();
     loadSavedState();
-    startLiveServerListener(); // خستنەگەڕی پەیوەندی لایڤی کلاود
+    startLiveServerListener();
 
-    // Check if previously logged in (in sessionStorage)
     let savedUser = sessionStorage.getItem('brigade_logged_user');
     if (savedUser) {
         currentUser = JSON.parse(savedUser);
@@ -451,12 +610,64 @@ function closeNoticeModal() {
     document.getElementById('noticeModalOverlay').style.display = 'none';
 }
 
+function saveNotice() {
+    let txt = document.getElementById('noticeInputText').value.trim();
+    if (!txt) txt = "هیچ ئاگادارییەک نییە.";
+    closeNoticeModal();
+    broadcastLiveSalaryUpdate({
+        notice: txt,
+        message: '📢 ئاگاداری نوێ لەلایەن بەڕێوەبەرەوە بڵاوکرایەوە!'
+    });
+}
+
 function updateMonth(e){
-    if (currentUser.role !== 'admin') return;
+    if (!currentUser || currentUser.role !== 'admin') return;
     currentCustomMonth = e.textContent.trim();
-    document.title = `لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}`;
-    localStorage.setItem('brigade_custom_month', currentCustomMonth);
-    syncChannel.postMessage({ type: 'REFRESH_ALL' });
+    broadcastLiveSalaryUpdate({
+        month: currentCustomMonth,
+        message: `📅 مانگی مووچە گۆڕدرا بۆ: ${currentCustomMonth}`
+    });
+}
+
+function handleFile(e){
+    if (!currentUser || currentUser.role !== 'admin') {
+        alert("تەنها ئەدمین بۆی هەیە فایلی ئێکسڵ بگۆڕێت!");
+        return;
+    }
+    const f = e.target.files[0];
+    if(!f) return;
+
+    document.getElementById('loadingOverlay').style.display = 'flex';
+    document.getElementById('loadingText').textContent = "فایلەکە دەخوێندرێتەوە و تەشفیر دەکرێت...";
+
+    let r = new FileReader();
+    r.onload = async function(evt){
+        let d = new Uint8Array(evt.target.result);
+        let wb = XLSX.read(d, {type:'array'});
+        let ws = wb.Sheets[wb.SheetNames[0]];
+        let json = XLSX.utils.sheet_to_json(ws, {header:1});
+        if(json.length > 0){
+            headersList = json[0];
+            globalData = [];
+            for(let i = 1; i < json.length; i++){
+                let row = json[i];
+                let obj = {};
+                headersList.forEach((h,idx)=>{ obj[h] = row[idx] !== undefined ? row[idx] : ""; });
+                globalData.push(obj);
+            }
+
+            await broadcastLiveSalaryUpdate({
+                month: currentCustomMonth,
+                headers: headersList,
+                rows: globalData,
+                message: '📊 فایلی نوێی مووچە گەیشت و ڕاستەوخۆ نوێکرایەوە!'
+            });
+
+            alert('فایلی ئێکسڵ بە سەرکەوتوویی بارکرا و لای هەموو بەکارهێنەران لە هەمان کاتدا نوێ بووەوە!');
+        }
+        document.getElementById('loadingOverlay').style.display = 'none';
+    };
+    r.readAsArrayBuffer(f);
 }
 
 function buildRanksTable() {
@@ -534,15 +745,7 @@ function closeDiffModalOutside(e) {
     } 
 }
 
-function updateMonth(e){
-    if (currentUser.role !== 'admin') return;
-    currentCustomMonth = e.textContent.trim();
-    document.title = `لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}`;
-    localStorage.setItem('brigade_custom_month', currentCustomMonth);
-    syncChannel.postMessage({ type: 'REFRESH_ALL' });
-}
-
-function toggleTheme(){document.body.classList.toggle('dark-mode');}
+function toggleTheme(){ document.body.classList.toggle('dark-mode'); }
 
 function formatCellValue(h,v){
     if(v===undefined||v===null)return"";
@@ -560,91 +763,6 @@ function isTargetHeader(h){
 
 function isUniqueHeader(h){return h.trim().replace(/ڕ/g,'ر').replace(/ي/g,'ی').includes("بێهاوتا");}
 function isExcludedHeader(h){let c=h.trim().replace(/ڕ/g,'ر').replace(/ي/g,'ی');return c==='پۆل'||c==='پلە'||c.includes("جۆری مووچەخۆر");}
-
-function handleFile(e){
-    if (!currentUser || currentUser.role !== 'admin') {
-        alert("تەنها ئەدمین بۆی هەیە فایلی ئێکسڵ بگۆڕێت!");
-        return;
-    }
-    const f=e.target.files[0];
-    if(!f)return;
-    document.getElementById('loadingOverlay').style.display='flex';
-    let r=new FileReader();
-    r.onload=function(evt){
-        let d=new Uint8Array(evt.target.result);
-        let wb=XLSX.read(d,{type:'array'});
-        let ws=wb.Sheets[wb.SheetNames[0]];
-        let json=XLSX.utils.sheet_to_json(ws,{header:1});
-        if(json.length>0){
-            headersList=json[0];
-            globalData=[];
-            for(let i=1; i<json.length; i++){
-                let row=json[i];
-                let obj={};
-                headersList.forEach((h,idx)=>{obj[h]=row[idx]!==undefined?row[idx]:"";});
-                globalData.push(obj);
-            }
-            function saveNotice() {
-    let txt = document.getElementById('noticeInputText').value.trim();
-    if (!txt) txt = "هیچ ئاگادارییەک نییە.";
-    closeNoticeModal();
-    // ناردنی ئاگادارییە تەشفیرکراوەکە بە شێوازی لایڤ بۆ هەمووان
-    broadcastLiveSalaryUpdate({
-        notice: txt,
-        message: '📢 ئاگاداری نوێ لەلایەن کارگێڕییەوە بڵاوکرایەوە!'
-    });
-}
-
-function updateMonth(e){
-    if (!currentUser || currentUser.role !== 'admin') return;
-    currentCustomMonth = e.textContent.trim();
-    // ناردنی گۆڕینی مانگ بە لایڤ بۆ هەمووان
-    broadcastLiveSalaryUpdate({
-        month: currentCustomMonth,
-        message: `📅 مانگی مووچە گۆڕدرا بۆ: ${currentCustomMonth}`
-    });
-}
-
-function handleFile(e){
-    if (!currentUser || currentUser.role !== 'admin') {
-        alert("تەنها ئەدمین بۆی هەیە فایلی ئێکسڵ بگۆڕێت!");
-        return;
-    }
-    const f=e.target.files[0];
-    if(!f)return;
-    document.getElementById('loadingOverlay').style.display='flex';
-    document.getElementById('loadingText').textContent = "فایلەکە دەخوێندرێتەوە و تەشفیر دەکرێت...";
-
-    let r=new FileReader();
-    r.onload=async function(evt){
-        let d=new Uint8Array(evt.target.result);
-        let wb=XLSX.read(d,{type:'array'});
-        let ws=wb.Sheets[wb.SheetNames[0]];
-        let json=XLSX.utils.sheet_to_json(ws,{header:1});
-        if(json.length>0){
-            headersList=json[0];
-            globalData=[];
-            for(let i=1; i<json.length; i++){
-                let row=json[i];
-                let obj={};
-                headersList.forEach((h,idx)=>{obj[h]=row[idx]!==undefined?row[idx]:"";});
-                globalData.push(obj);
-            }
-
-            // پەخشی ڕاستەوخۆ بۆ سەرجەم بەکارهێنەران و مۆبایلەکانی تر
-            await broadcastLiveSalaryUpdate({
-                month: currentCustomMonth,
-                headers: headersList,
-                rows: globalData,
-                message: '📊 فایلی نوێی مووچە گەیشت و ڕاستەوخۆ نوێکرایەوە!'
-            });
-
-            alert('فایلی ئێکسڵ بە سەرکەوتوویی بارکرا، تەشفیر کرا و لای هەموو بەکارهێنەران لە هەمان چرکەدا نوێ بووەوە!');
-        }
-        document.getElementById('loadingOverlay').style.display='none';
-    };
-    r.readAsArrayBuffer(f);
-}
 
 function displayVerticalRecord(row){
     const c=document.getElementById('resultContainer');
