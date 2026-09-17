@@ -143,10 +143,11 @@ body { background: #f0fdf4 !important; -webkit-print-color-adjust: exact; print-
 
         <!-- ١. دانانی لینکی ئێکسڵ یان بارکردنی فایل -->
         <div style="background:var(--th-bg); padding:10px; border-radius:10px; border:1px solid var(--table-border); margin-bottom:12px;">
-            <label style="font-size:11px; font-weight:bold; color:var(--th-color); display:block; margin-bottom:6px;">🔗 دانانی لینکی فایلی ئێکسڵ (بۆ ئەوەی لای هەمووان بە یەک چرکە کار بکات):</label>
-            <div style="display:flex; gap:6px; margin-bottom:8px;">
+            <label style="font-size:11px; font-weight:bold; color:var(--th-color); display:block; margin-bottom:6px;">🔗 دانانی لینکی فایلی ئێکسڵ:</label>
+            <div style="display:flex; gap:5px; margin-bottom:8px;">
                 <input type="text" id="adminExcelUrlInput" class="login-input" style="margin-bottom:0; font-size:11px; padding:6px 10px; text-align:left; direction:ltr;" placeholder="https://... لینکی ئێکسڵ لێرە دابنێ">
-                <button class="small-icon-btn" style="flex:0 0 auto; background:#16a34a; color:#fff;" onclick="saveAdminExcelUrl()">ناردنی لینک</button>
+                <button class="small-icon-btn" style="flex:0 0 auto; background:#16a34a; color:#fff;" onclick="saveAdminExcelUrl()" title="پاشەکەوتکردنی لینک">💾 هەڵگرتن</button>
+                <button class="small-icon-btn" style="flex:0 0 auto; background:#ef4444; color:#fff;" onclick="deleteAdminExcelUrl()" title="سڕینەوەی تەواوی لینک و داتاکان">🗑️ سڕینەوە</button>
             </div>
             <div style="font-size:10px; color:var(--text-color); opacity:0.8; margin-bottom:6px;">یان هەڵبژاردنی فایل لە مۆبایلەکەت:</div>
             <input type="file" id="adminExcelFileInput" accept=".xlsx, .xls" style="font-size:11px; width:100%;" onchange="handleFile(event)">
@@ -168,7 +169,11 @@ body { background: #f0fdf4 !important; -webkit-print-color-adjust: exact; print-
             <button class="small-icon-btn" style="width:100%; margin-top:6px;" onclick="saveAdminNotice()">بڵاوکردنەوەی ئاگاداری</button>
         </div>
 
-        <button class="login-btn" style="background:#64748b; padding:8px;" onclick="closeSecretAdminPanel()">داخستنی پانێڵ</button>
+        <!-- دوگمەی هەڵگرتنی گشتی و داخستن -->
+        <div style="display:flex; gap:6px;">
+            <button class="login-btn" style="background:#16a34a; padding:8px; flex:1;" onclick="saveAllAdminChanges()">💾 هەڵگرتنی گشتی</button>
+            <button class="login-btn" style="background:#64748b; padding:8px; flex:1;" onclick="closeSecretAdminPanel()">داخستن</button>
+        </div>
     </div>
 </div>
 
@@ -525,12 +530,12 @@ async function loadExcelFromUrl(rawUrl, showToast = true) {
     return false;
 }
 
-// کاتێک ئەدمین لە پانێڵەکەدا لینک دادەنێت
+// کاتێک ئەدمین لە پانێڵەکەدا لینک دادەنێت (هەڵگرتنی لینک)
 async function saveAdminExcelUrl() {
     const input = document.getElementById('adminExcelUrlInput');
     const url = input ? input.value.trim() : '';
     if (!url) {
-        alert('تکایە لینکێک بنووسە!');
+        alert('تکایە سەرەتا لینکێک بنووسە!');
         return;
     }
     document.getElementById('loadingOverlay').style.display = 'flex';
@@ -543,12 +548,50 @@ async function saveAdminExcelUrl() {
         broadcastLiveSalaryUpdate({
             excelUrl: url,
             month: currentCustomMonth,
-            message: '📊 فایلی نوێی مووچە لە ڕێگەی لینکەوە بۆ هەمووان نوێکرایەوە!'
+            message: '📊 فایلی نوێی مووچە هەڵگیرا و بۆ هەمووان نوێکرایەوە!'
         });
-        alert(`سەرکەوتوو بوو! مووچەی (${globalData.length}) پێشمەرگە خوێندرایەوە و بۆ هەمووان جێگیرکرا.`);
+        alert(`سەرکەوتوو بوو! مووچەی (${globalData.length}) پێشمەرگە پاشەکەوت کرا و بۆ هەمووان جێگیرکرا.`);
     } else {
-        alert('⚠️ نەتوانرا بخوێندرێتەوە!\nتکایە دڵنیابە لەوەی دەسەڵاتی فایلەکە لەسەر Anyone with the link دانراوە.');
+        alert('⚠️ نەتوانرا بخوێندرێتەوە!\nتکایە دڵنیابە لەوەی لینکەکە دروستە و دەسەڵاتی فایلەکە لەسەر Anyone with the link دانراوە.');
     }
+}
+
+// سڕینەوەی لینک و بەتاڵکردنەوەی تەواوی لیستی مووچە لەسەر هەموو مۆبایلەکان
+function deleteAdminExcelUrl() {
+    if (!confirm("⚠️ دڵنیایت لە سڕینەوەی ئەم لینکە؟\nبە سڕینەوەی، تەواوی ناوی پێشمەرگەکان و زانیاری مووچە لەسەر هەموو مۆبایلەکان پاک دەبێتەوە.")) return;
+
+    const input = document.getElementById('adminExcelUrlInput');
+    if (input) input.value = '';
+
+    localStorage.removeItem('brigade_saved_excel_url');
+    localStorage.removeItem('brigade_saved_headers');
+    localStorage.removeItem('brigade_saved_data');
+
+    headersList = [];
+    globalData = [];
+    clearSearch();
+
+    // پەخشی سڕینەوەکە بۆ مۆبایلی هەمووان دەستبەجێ
+    broadcastLiveSalaryUpdate({
+        excelUrl: '',
+        headers: [],
+        rows: [],
+        message: '🗑️ لیستی مووچە لەلایەن بەڕێوەبەرەوە سڕایەوە!'
+    });
+
+    alert('✅ لینک و تەواوی داتاکانی مووچە بە سەرکەوتوویی سڕانەوە!');
+}
+
+// هەڵگرتنی گشتی (پاشەکەوتکردنی مانگ، ئاگاداری و لینک بە یەکجار)
+async function saveAllAdminChanges() {
+    saveAdminMonth();
+    saveAdminNotice();
+    const url = document.getElementById('adminExcelUrlInput')?.value.trim();
+    if (url && url !== localStorage.getItem('brigade_saved_excel_url')) {
+        await saveAdminExcelUrl();
+    }
+    alert('💾 هەموو گۆڕانکارییەکان بە سەرکەوتوویی هەڵگیران و بڵاوکرانەوە!');
+    closeSecretAdminPanel();
 }
 
 // کاتێک ئەدمین فایلی ئێکسڵ بە ڕاستەوخۆ هەڵدەبژێرێت
