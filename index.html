@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="ku" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لیستی مووچە - لیوای ۷ی پیادە</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg-color:#f0fdf4;--text-color:#1e293b;--card-bg:linear-gradient(135deg,#f0f9ff 0%,#ffffff 50%,#e0f2fe 100%);--th-bg:#e0f2fe;--th-color:#034f84;--val-bg:#ffffff;--modal-bg:linear-gradient(135deg,#e0f2fe 0%,#ffffff 50%,#bae6fd 100%);--modal-text:#034f84;--table-border:#0284c7}
+body.dark-mode{--bg-color:#0f172a;--text-color:#f4f6f9;--card-bg:linear-gradient(135deg,#1e293b 0%,#334155 100%);--th-bg:#334155;--th-color:#38bdf8;--val-bg:#1e293b;--modal-bg:linear-gradient(135deg,#0369a1 0%,#1e293b 50%,#0f172a 100%);--modal-text:#38bdf8;--table-border:#38bdf8}
+body{font-family:Tahoma,sans-serif;background:var(--bg-color);background-attachment:fixed;color:var(--text-color);margin:0;padding:10px;display:flex;flex-direction:column;width:100%;box-sizing:border-box;min-height:95vh;align-items:center}
+#loadingOverlay,.modal-overlay,.ranks-modal-overlay,#diffModalOverlay,#loginOverlay,#noticeModalOverlay{position:fixed;top:0;left:0;width:100%;height:100%;display:none;justify-content:center;align-items:center;z-index:99999}
+#loadingOverlay{background:rgba(0,0,0,0.5);display:none}
+.loading-box{color:#ffffff;font-weight:bold;font-size:18px;text-align:center}
+.main-form-wrapper{width:100%;max-width:750px;background:rgba(255,255,255,0.85);border:3px solid var(--table-border);border-radius:16px;padding:15px;box-sizing:border-box;box-shadow:0 10px 30px rgba(56,189,248,0.3);margin-top:5px;display:none;}
+body.dark-mode .main-form-wrapper{background:rgba(30,41,59,0.85)}
+
+/* User Bar & Logout */
+.user-status-bar{display:flex;justify-content:space-between;align-items:center;background:var(--val-bg);border:1.5px solid var(--table-border);border-radius:8px;padding:6px 12px;margin-bottom:8px;font-size:11.5px;font-weight:bold;}
+.logout-btn{background:#ef4444;color:#fff;border:none;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:bold;}
+.logout-btn:hover{background:#dc2626;}
+
+/* Announcement Bar */
+.notice-box{background:linear-gradient(135deg,#fef3c7 0%,#fffbeb 100%);border:2px solid #f59e0b;border-radius:10px;padding:8px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;box-sizing:border-box;animation:pulseBorder 2s infinite alternate;}
+body.dark-mode .notice-box{background:linear-gradient(135deg,#78350f 0%,#451a03 100%);border-color:#d97706;color:#fef3c7;}
+@keyframes pulseBorder { 0%{box-shadow:0 0 4px rgba(245,158,11,0.3);} 100%{box-shadow:0 0 12px rgba(245,158,11,0.6);} }
+.notice-content{font-size:12px;font-weight:bold;color:#b45309;flex-grow:1;}
+body.dark-mode .notice-content{color:#fde68a;}
+.notice-admin-btn{background:#f59e0b;color:#fff;border:none;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:bold;white-space:nowrap;}
+
+.header-banner-box{display:flex;align-items:center;justify-content:space-between;background:var(--val-bg);border:2px solid var(--table-border);border-radius:10px;padding:8px;margin-bottom:8px;box-sizing:border-box;gap:5px}
+.logo-wrapper{position:relative;display:inline-block;flex-shrink:0;}
+.top-banner-img{width:55px;height:55px;object-fit:contain;border-radius:6px;display:block;}
+#uploadBtnElement{position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:5;border:none;background:transparent;}
+
+.banner-text-container,.banner-text-container-right{flex-grow:1;display:flex;flex-direction:column;gap:1px}
+.banner-text-container{text-align:left;direction:ltr}
+.banner-text-container-right{text-align:right;direction:rtl}
+.banner-text-container div,.banner-text-container-right div{font-size:11px;font-weight:bold;color:var(--th-color);white-space:nowrap}
+.top-container{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding:4px 12px;border-radius:50px;background:linear-gradient(135deg,#0284c7 0%,#e0f2fe 50%,#ffffff 100%);border:2px solid var(--table-border);box-sizing:border-box}
+body.dark-mode .top-container{background:linear-gradient(135deg,#1e293b 0%,#0369a1 50%,#0f172a 100%)}
+.icon-btn{width:32px;height:32px;cursor:pointer;border:2px solid var(--table-border);border-radius:50%;background:linear-gradient(135deg,#e0f2fe 0%,#ffffff 100%);color:var(--th-color);font-size:15px;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0}
+body.dark-mode .icon-btn{background:linear-gradient(135deg,#1e293b 0%,#334155 100%)}
+.center-title{font-size:10.5px;font-weight:800;text-align:center;color:var(--th-color);flex-grow:1;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+#lblMonth{padding:0 3px;display:inline-block;outline:none;}
+#lblMonth[contenteditable="true"]{border-bottom:1.5px dashed currentColor;cursor:text;}
+
+.search-container{margin-bottom:8px;position:relative;display:flex;flex-direction:column;width:100%;box-sizing:border-box}
+.small-action-bar{display:flex;justify-content:center;align-items:center;margin-bottom:6px;margin-top:-2px;width:100%;gap:8px;flex-wrap:wrap}
+.small-icon-btn{height:28px;cursor:pointer;border:1.5px solid var(--table-border);border-radius:50px;background:linear-gradient(135deg,#e0f2fe 0%,#ffffff 100%);color:var(--th-color);font-size:11px;font-weight:bold;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:0 12px;flex:1;min-width:120px}
+body.dark-mode .small-icon-btn{background:linear-gradient(135deg,#1e293b 0%,#334155 100%);color:#38bdf8}
+.search-box{position:relative;width:100%;box-sizing:border-box}
+#txtSearch{padding:8px 45px;width:100%;box-sizing:border-box;border-radius:50px;border:2px solid var(--table-border);background:var(--val-bg);color:var(--text-color);font-size:14px}
+.search-icon-left,.search-icon-right{position:absolute;top:50%;transform:translateY(-50%);font-size:16px}
+.search-icon-left{right:15px;pointer-events:none}
+.search-icon-right{left:15px;cursor:pointer;color:var(--th-color)}
+#lstSuggestions{position:absolute;top:45px;right:0;left:0;background:var(--val-bg);border:1px solid var(--table-border);list-style:none;padding:0;margin:0;max-height:200px;overflow-y:auto;display:none;z-index:10;border-radius:12px}
+#lstSuggestions li{padding:10px 15px;cursor:pointer;border-bottom:1px solid var(--table-border);text-align:right}
+#lstSuggestions li:hover{background:var(--th-bg)}
+.vertical-table-container{width:100%;box-sizing:border-box}
+.record-card{background:var(--card-bg);border:1.5px solid var(--table-border);border-radius:10px;margin-bottom:15px;padding:4px;display:flex;flex-direction:column;gap:4px;box-sizing:border-box}
+.record-header{background:linear-gradient(135deg,#0284c7 0%,#e0f2fe 50%,#ffffff 100%);padding:10px;text-align:center;font-weight:bold;color:#034f84;border:1px solid var(--table-border);border-radius:6px;font-size:13px}
+body.dark-mode .record-header{background:linear-gradient(135deg,#1e293b 0%,#0369a1 50%,#0f172a 100%);color:#38bdf8}
+.kv-row{display:flex;border:1px solid var(--table-border);border-radius:6px;overflow:hidden;box-sizing:border-box}
+.unique-divider{height:2px;margin:1px 0;position:relative}
+.unique-divider::after{content:'';position:absolute;left:50%;transform:translateX(-50%);width:85%;height:2px;background:var(--table-border);border-radius:2px}
+.kv-key{flex:1;background:var(--th-bg);color:var(--th-color);padding:6px 8px;text-align:center;font-weight:bold;font-size:11px;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--table-border);word-break:break-word}
+.kv-val{flex:1.5;padding:6px 8px;text-align:center;justify-content:center;background:var(--val-bg);color:var(--text-color);font-size:12px;display:flex;align-items:center;word-break:break-word}
+.special-highlight{font-size:14px!important;color:#dc2626!important;font-weight:bold}
+body.dark-mode .special-highlight{color:#ef4444!important}
+.bottom-print-container{display:none;justify-content:center;margin-top:15px;width:100%}
+.print-btn-circle{width:45px;height:45px;cursor:pointer;border:2px solid var(--table-border);border-radius:50%;background:var(--table-border);color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center}
+.ranks-modal-overlay,.diff-modal-overlay{background:rgba(0,0,0,0.6);padding:15px;box-sizing:border-box}
+.ranks-modal-content,.diff-modal-content{width:100%;max-width:1100px;max-height:90vh;background:var(--val-bg);border:3px solid var(--table-border);border-radius:16px;display:flex;flex-direction:column;box-shadow:0 15px 40px rgba(0,0,0,0.4);box-sizing:border-box;overflow:hidden}
+.diff-modal-content{max-width:600px!important;}
+.ranks-title-container{display:flex;justify-content:space-between;align-items:center;padding:6px 15px;background:linear-gradient(135deg,#0284c7 0%,#e0f2fe 50%,#ffffff 100%);border-bottom:2px solid var(--table-border);box-sizing:border-box;min-height:40px}
+body.dark-mode .ranks-title-container{background:linear-gradient(135deg,#1e293b 0%,#0369a1 50%,#0f172a 100%)}
+.ranks-title-text{font-size:13px;font-weight:800;text-align:center;color:var(--th-color);flex-grow:1;margin:0}
+.ranks-table-wrapper{width:100%;overflow:auto;padding:0 10px 10px 10px;box-sizing:border-box;flex-grow:1}
+.ranks-table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap;text-align:center}
+.ranks-table th,.ranks-table td{border:1px solid var(--table-border);padding:8px 10px;text-align:center;vertical-align:middle}
+.ranks-table th{background:var(--th-bg);color:var(--th-color);position:sticky;top:0;z-index:2}
+.ranks-table td{background:var(--val-bg);color:var(--text-color)}
+.modal-overlay{background:rgba(0,0,0,0.5);display:none;position:fixed;top:0;left:0;width:100%;height:100%;justify-content:center;align-items:center;z-index:9999}
+.modal-circle{width:330px;height:330px;border-radius:50%;background:var(--modal-bg);border:4px solid var(--table-border);display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:15px;box-sizing:border-box;box-shadow:0 10px 30px rgba(2,132,199,0.4);position:relative}
+.modal-text{font-size:10px;color:var(--modal-text);font-weight:bold;line-height:1.4;display:flex;flex-direction:column;align-items:center;gap:2px;width:100%}
+.author-name{font-size:12.5px;font-weight:900;margin:2px 0;background:linear-gradient(135deg,#0284c7 0%,#818cf8 50%,#4f46e5 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:0.3px}
+.modal-close{margin-top:6px;background:var(--table-border);color:#fff;border:none;border-radius:20px;padding:3px 14px;font-size:11px;cursor:pointer;font-weight:bold}
+
+/* Login Modal Box */
+.login-card{width:90%;max-width:380px;background:var(--val-bg);border:3px solid var(--table-border);border-radius:18px;padding:25px 20px;box-shadow:0 20px 40px rgba(0,0,0,0.5);text-align:center;}
+.login-card h2{color:var(--th-color);margin-top:0;margin-bottom:15px;font-size:18px;}
+.login-input{width:100%;box-sizing:border-box;padding:10px 14px;margin-bottom:12px;border:1.5px solid var(--table-border);border-radius:8px;font-size:13px;background:var(--val-bg);color:var(--text-color);outline:none;}
+.login-btn{width:100%;padding:10px;background:var(--table-border);color:#fff;border:none;border-radius:8px;font-weight:bold;font-size:14px;cursor:pointer;}
+.login-error{color:#ef4444;font-size:12px;margin-top:10px;font-weight:bold;display:none;}
+
+/* Notice Edit Modal */
+.notice-modal-card{width:90%;max-width:450px;background:var(--val-bg);border:3px solid var(--table-border);border-radius:14px;padding:18px;box-shadow:0 10px 30px rgba(0,0,0,0.4);}
+.notice-textarea{width:100%;box-sizing:border-box;height:100px;padding:10px;border:1.5px solid var(--table-border);border-radius:8px;font-family:Tahoma;font-size:13px;background:var(--val-bg);color:var(--text-color);outline:none;resize:none;}
+
+@media print {
+body { background: #f0fdf4 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.top-container, .search-container, .bottom-print-container, #loadingOverlay, .modal-overlay, .ranks-modal-overlay, #diffModalOverlay, #fileActionRow, .user-status-bar, .notice-box, #loginOverlay, #noticeModalOverlay { display: none !important; }
+.main-form-wrapper { display: block !important; background: rgba(255,255,255,0.85) !important; border: 3px solid #0284c7 !important; box-shadow: none !important; width: 100% !important; max-width: 100% !important; padding: 15px !important; margin: 0 !important; }
+.header-banner-box { display: flex !important; background: #ffffff !important; border: 2px solid #0284c7 !important; border-radius: 10px !important; padding: 8px !important; margin-bottom: 8px !important; }
+.top-banner-img { width: 55px !important; height: 55px !important; }
+.banner-text-container div, .banner-text-container-right div { font-size: 13px !important; color: #034f84 !important; }
+.record-card { background: linear-gradient(135deg, #f0f9ff 0%, #ffffff 50%, #e0f2fe 100%) !important; border: 1.5px solid #0284c7 !important; border-radius: 10px !important; padding: 6px !important; margin-bottom: 15px !important; }
+.record-header { background: linear-gradient(135deg, #0284c7 0%, #e0f2fe 50%, #e0f2fe 100%) !important; color: #034f84 !important; border: 1.5px solid #0284c7 !important; font-size: 17px !important; padding: 14px !important; }
+.kv-row { border: 1px solid #0284c7 !important; }
+.kv-key { background: #e0f2fe !important; color: #034f84 !important; border-left: 1px solid #0284c7 !important; font-size: 13px !important; }
+.kv-val { background: #ffffff !important; color: #1e293b !important; font-size: 14px !important; }
+.special-highlight { color: #dc2626 !important; font-size: 16px !important; }
+.unique-divider::after { background: #0284c7 !important; }
+}
+</style>
+</head>
+<body>
+
+<!-- Login Modal -->
+<div id="loginOverlay" style="display:flex;">
+    <div class="login-card">
+        <h2>سیستەمی مووچەی لیوا</h2>
+        <input type="text" id="loginUsername" class="login-input" placeholder="ناوی بەکارهێنەر بنووسە..." autocomplete="off">
+        <input type="password" id="loginPassword" class="login-input" placeholder="وشەی نهێنی بنووسە...">
+        <button class="login-btn" onclick="handleLogin()">چوونەژوورەوە</button>
+        <div id="loginError" class="login-error">ناوی بەکارهێنەر یان وشەی نهێنی هەڵەیە!</div>
+    </div>
+</div>
+
+<div id="loadingOverlay">
+    <div class="loading-box" id="loadingText">تکایە کەمێك چاوڕێ بکە...</div>
+</div>
+
+<div class="main-form-wrapper" id="mainAppWrapper">
+    <!-- User Bar -->
+    <div class="user-status-bar">
+        <div>بەکارهێنەر: <span id="currentUserLabel" style="color:var(--table-border);"></span></div>
+        <button class="logout-btn" onclick="handleLogout()">دەرچوون 🚪</button>
+    </div>
+
+    <!-- Announcement Box -->
+    <div class="notice-box" id="noticeBanner">
+        <span style="font-size:16px;">📢</span>
+        <div class="notice-content" id="noticeTextDisplay">بەخێربێن بۆ سیستەمی لێکۆڵینەوەی مووچە.</div>
+        <button class="notice-admin-btn" id="btnAdminEditNotice" style="display:none;" onclick="openNoticeModal()">دەستکاری ئاگاداری</button>
+    </div>
+
+    <div class="header-banner-box">
+        <div class="banner-text-container-right">
+            <div>وەزارەتی پێشمەرگە</div>
+            <div>دەڤــــــەری یـــــــەك</div>
+            <div>فـــرقــەی ۷ حــەوت</div>
+            <div>لـــــــیوای ۷ حــەوت</div>
+        </div>
+        
+        <div class="logo-wrapper" id="logoContainer" title="کرتە بکە بۆ گۆڕینی فایلی ئێکسل">
+            <img src="https://i.postimg.cc/pmsB9W5R/image.png" alt="Logo" class="top-banner-img" id="logoImg">
+            <input type="file" id="uploadBtnElement" accept=".xlsx, .xls" onchange="handleFile(event)">
+        </div>
+
+        <div class="banner-text-container">
+            <div>وزارة البيشــمركة</div>
+            <div>المنطقة ۱ الأولــى</div>
+            <div>الفـرقة ۷ السـابعة</div>
+            <div>اللــواء ۷ السـابعة</div>
+        </div>
+    </div>
+
+    <div style="margin-bottom: 8px; width: 100%; display: flex; gap: 8px;" id="fileActionRow">
+        <button class="small-icon-btn" onclick="toggleRanksTable()">
+            <span>📊 مووچە بەپێی پلە</span>
+        </button>
+        <button class="small-icon-btn" onclick="toggleDiffTable()">
+            <span>📈 جیاوازی پلەکان</span>
+        </button>
+    </div>
+
+    <div class="top-container">
+        <button class="icon-btn" onclick="openAboutModal()" title="دەربارەی ئێمە">ℹ️</button>
+        <div class="center-title">زانیاری مووچەی لیوای ۷ی پیادە بۆ مانگی <span id="lblMonth" contenteditable="false" onblur="updateMonth(this)">6/2026</span></div>
+        <button class="icon-btn" onclick="toggleTheme()" title="گۆڕینی ڕەنگ">🌙</button>
+    </div>
+
+    <div class="search-container">
+        <div class="search-box" style="margin-top:6px;">
+            <input type="text" id="txtSearch" placeholder="لێرە ناوی کەسەکە بنووسە..." oninput="filterSearch()">
+            <span class="search-icon-left">🔍</span>
+            <span class="search-icon-right" id="btnClearSearch" onclick="clearSearch()" title="بەتالکردنەوەی سێرچ">✕</span>
+            <ul id="lstSuggestions"></ul>
+        </div>
+    </div>
+
+    <div class="vertical-table-container" id="resultContainer"></div>
+
+    <div class="bottom-print-container" id="bottomPrintContainer">
+        <button class="print-btn-circle" onclick="window.print()" title="چاپکردنی زانیارییەکان">🖨️</button>
+    </div>
+</div>
+
+<!-- Notice Edit Modal -->
+<div class="modal-overlay" id="noticeModalOverlay">
+    <div class="notice-modal-card">
+        <h3 style="color:var(--th-color);margin-top:0;">نووسینی ئاگاداری نوێ</h3>
+        <textarea id="noticeInputText" class="notice-textarea" placeholder="دەقی ئاگاداری لێرە بنووسە..."></textarea>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
+            <button class="small-icon-btn" style="background:#ef4444;color:#fff;border:none;" onclick="closeNoticeModal()">پاشگەزبوونەوە</button>
+            <button class="small-icon-btn" onclick="saveNotice()">بڵاوکردنەوە</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="aboutModal" onclick="closeAboutModalOutside(event)">
+    <div class="modal-circle">
+        <div class="modal-text">
+            <span>ئەم سیستەمە بە شێوەکی پێشکەوتو و سەردەمیانە لەلایەن</span>
+            <span class="author-name">لەزگین سدیٯ عبدالعزیز</span>
+            <span>تایبەت بە لیوای 7ی پیادە</span>
+            <span>بۆ هەر ڕەخنە و پێشنیارێك پەیوەندی بکەن بە</span>
+            <span>07504624559</span>
+            <span>07824624559</span>
+        </div>
+        <button class="modal-close" onclick="closeAboutModal()">داخستن</button>
+    </div>
+</div>
+
+<div class="ranks-modal-overlay" id="ranksModalOverlay" onclick="closeRanksModalOutside(event)">
+    <div class="ranks-modal-content">
+        <div class="ranks-title-container">
+            <button class="icon-btn" onclick="toggleRanksTable()" title="داخستن">✕</button>
+            <div class="ranks-title-text">مووچە بەپێی پلە</div>
+            <div style="width: 32px; visibility: hidden;"></div>
+        </div>
+        <div class="ranks-table-wrapper">
+            <table class="ranks-table">
+                <thead>
+                    <tr>
+                        <th>ژ</th><th>پلە</th><th>بنەرەتی</th><th>ترسناکی</th><th>تایبەت</th><th>کۆى گشتى</th><th>خانەنشینی</th><th>باج</th><th>کۆی بڕاوەکانى</th><th>تمـــــويل</th><th>گۆڤار</th><th>وەرزش</th><th>تەندروستی</th><th>کۆی</th><th>پۆختەی مووچە</th>
+                    </tr>
+                </thead>
+                <tbody id="ranksTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="diff-modal-overlay" id="diffModalOverlay" onclick="closeDiffModalOutside(event)">
+    <div class="diff-modal-content">
+        <div class="ranks-title-container">
+            <button class="icon-btn" onclick="toggleDiffTable()" title="داخستن">✕</button>
+            <div class="ranks-title-text">جیاوازی مووچە بەپێی پلە</div>
+            <div style="width: 32px; visibility: hidden;"></div>
+        </div>
+        <div class="ranks-table-wrapper">
+            <table class="ranks-table">
+                <thead>
+                    <tr>
+                        <th>ژ</th><th>لە پلەی</th><th>تێپەڕین</th><th>بۆ پلەی</th><th>جیاوازی (دینار)</th>
+                    </tr>
+                </thead>
+                <tbody id="diffTableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+// Accounts Database
+const ACCOUNTS = [
+    { username: "Lazgin", password: "12345678", role: "admin", name: "لەزگین (بەڕێوەبەر)" },
+    { username: "Liway1", password: "1234", role: "user", name: "لیوای ۱" },
+    { username: "Liway3", password: "1234", role: "user", name: "لیوای ۳" }
+];
+
+let currentUser = null;
+let globalData = [], headersList = [], currentCustomMonth = "6/2026", savedScrollY = 0;
+const targetColumnIndex = 1;
+
+// Setup Live Sync with BroadcastChannel (Cross-tab instant sync)
+const syncChannel = new BroadcastChannel('brigade_salary_sync');
+syncChannel.onmessage = (event) => {
+    if (event.data && event.data.type === 'REFRESH_ALL') {
+        loadSavedState();
+        filterSearch();
+    }
+};
+
+window.addEventListener('storage', (e) => {
+    if (e.key === 'brigade_saved_data' || e.key === 'brigade_custom_month' || e.key === 'brigade_announcement') {
+        loadSavedState();
+        filterSearch();
+    }
+});
+
+const ranksSheetData = [
+    ["ليوا", "1,500,000", "605,000", "2,000,000", "4,105,000", "105,000", "", "105,000", "3,980,250", "100", "1,500", "1,000", "2,600", "3,977,650"],
+    ["عميد", "1,048,000", "590,000", "", "1,638,000", "73,360", "", "73,360", "1,564,640", "100", "1,500", "1,000", "2,600", "1,562,040"],
+    ["عقيد", "758,000", "575,000", "", "1,333,000", "53,060", "", "53,060", "1,279,940", "100", "1,500", "1,000", "2,600", "1,277,340"],
+    ["مقدم", "621,000", "560,000", "", "1,181,000", "43,470", "", "43,470", "1,137,530", "100", "1,500", "1,000", "2,600", "1,134,930"],
+    ["رائد", "509,000", "545,000", "", "1,054,000", "35,630", "", "35,630", "1,018,370", "100", "1,500", "1,000", "2,600", "1,015,770"],
+    ["نقيب", "429,000", "530,000", "", "959,000", "30,030", "", "30,030", "928,970", "100", "1,500", "1,000", "2,600", "926,370"],
+    ["م.اول", "362,000", "515,000", "", "877,000", "25,340", "", "25,340", "851,660", "100", "1,500", "1,000", "2,600", "849,060"],
+    ["ملازم", "296,000", "500,000", "", "796,000", "20,720", "", "20,720", "775,280", "100", "1,500", "1,000", "2,600", "772,680"],
+    ["ن.ض.د/م", "509,000", "485,000", "", "994,000", "35,630", "", "35,630", "958,370", "100", "500", "750", "1,350", "957,020"],
+    ["ن.ض.د/1", "450,000", "485,000", "", "935,000", "31,500", "", "31,500", "903,500", "100", "500", "750", "1,350", "902,150"],
+    ["ن.ض.د/2", "429,000", "485,000", "", "914,000", "30,030", "", "30,030", "883,970", "100", "500", "750", "1,350", "882,620"],
+    ["ن.ض.د/3", "398,000", "470,000", "", "868,000", "27,860", "", "27,860", "840,140", "100", "500", "750", "1,350", "838,790"],
+    ["ن.ض.د/4", "380,000", "470,000", "", "850,000", "26,600", "", "26,600", "823,400", "100", "500", "750", "1,350", "822,050"],
+    ["ن.ض.د/5", "362,000", "455,000", "", "817,000", "25,340", "", "25,340", "791,660", "100", "500", "750", "1,350", "790,310"],
+    ["ن.ض.د/6", "332,000", "455,000", "", "787,000", "23,240", "", "23,240", "763,760", "100", "500", "750", "1,350", "762,410"],
+    ["ن.ض.د/7", "314,000", "440,000", "", "754,000", "21,980", "", "21,980", "732,020", "100", "500", "750", "1,350", "730,670"],
+    ["ن.ض.د/8", "296,000", "440,000", "", "736,000", "20,720", "", "20,720", "715,280", "100", "500", "750", "1,350", "713,930"],
+    ["ر.ع", "250,000", "425,000", "", "675,000", "17,500", "", "17,500", "657,500", "100", "500", "750", "1,350", "656,150"],
+    ["عريف", "235,000", "410,000", "", "645,000", "16,450", "", "16,450", "628,550", "100", "500", "750", "1,350", "627,200"],
+    ["ن.ع", "205,000", "395,000", "", "600,000", "14,350", "", "14,350", "585,650", "100", "500", "750", "1,350", "584,300"],
+    ["ج.اول", "180,000", "380,000", "", "560,000", "12,600", "", "12,600", "547,400", "100", "500", "500", "1,100", "546,300"],
+    ["پ.م", "164,000", "350,000", "", "514,000", "11,480", "", "11,480", "502,520", "100", "500", "500", "1,100", "501,420"]
+];
+
+const diffSheetData = [
+    ["عەمید", "بۆ", "لیوا", "2,415,610"],
+    ["عقید", "بۆ", "عەمید", "384,700"],
+    ["مقدم", "بۆ", "عقید", "142,410"],
+    ["رائد", "بۆ", "مقدم", "119,160"],
+    ["نقيب", "بۆ", "رائد", "89,400"],
+    ["م.اول", "بۆ", "نقيب", "77,310"],
+    ["ملازم", "بۆ", "م.اول", "76,280"],
+    ["ن.ض/١", "بۆ", "ن.ض/م", "54,870"],
+    ["ن.ض/٢", "بۆ", "ن.ض/١", "19,530"],
+    ["ن.ض/٣", "بۆ", "ن.ض/٢", "43,820"],
+    ["ن.ض/٤", "بۆ", "ن.ض/٣", "16,740"],
+    ["ن.ض/٥", "بۆ", "ن.ض/٤", "31,740"],
+    ["ن.ض/٦", "بۆ", "ن.ض/٥", "37,900"],
+    ["ن.ض/٧", "بۆ", "ن.ض/٦", "31,740"],
+    ["ن.ض/٨", "بۆ", "ن.ض/٧", "16,740"],
+    ["ر.ع", "بۆ", "ن.ض/٨", "57,780"],
+    ["عريف", "بۆ", "ر.ع", "28,950"],
+    ["ن.ع", "بۆ", "عريف", "42,900"],
+    ["ج.اول", "بۆ", "ن.ع", "38,000"],
+    ["پ.م", "بۆ", "ج.اول", "44,880"]
+];
+
+window.onload = () => {
+    buildRanksTable();
+    buildDiffTable();
+    loadSavedState();
+
+    // Check if previously logged in (in sessionStorage)
+    let savedUser = sessionStorage.getItem('brigade_logged_user');
+    if (savedUser) {
+        currentUser = JSON.parse(savedUser);
+        applyUserPermissions();
+    } else {
+        document.getElementById('loginOverlay').style.display = 'flex';
+    }
+};
+
+function handleLogin() {
+    let u = document.getElementById('loginUsername').value.trim();
+    let p = document.getElementById('loginPassword').value.trim();
+    let err = document.getElementById('loginError');
+
+    let matched = ACCOUNTS.find(acc => acc.username.toLowerCase() === u.toLowerCase() && acc.password === p);
+    if (matched) {
+        currentUser = matched;
+        sessionStorage.setItem('brigade_logged_user', JSON.stringify(currentUser));
+        err.style.display = 'none';
+        applyUserPermissions();
+    } else {
+        err.style.display = 'block';
+    }
+}
+
+function handleLogout() {
+    sessionStorage.removeItem('brigade_logged_user');
+    currentUser = null;
+    document.getElementById('mainAppWrapper').style.display = 'none';
+    document.getElementById('loginOverlay').style.display = 'flex';
+    document.getElementById('loginUsername').value = '';
+    document.getElementById('loginPassword').value = '';
+    clearSearch();
+}
+
+function applyUserPermissions() {
+    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('mainAppWrapper').style.display = 'block';
+    document.getElementById('currentUserLabel').textContent = currentUser.name;
+
+    const isAdmin = currentUser.role === 'admin';
+    const uploadBtn = document.getElementById('uploadBtnElement');
+    const logoContainer = document.getElementById('logoContainer');
+    const lblMonth = document.getElementById('lblMonth');
+    const btnAdminEditNotice = document.getElementById('btnAdminEditNotice');
+
+    if (isAdmin) {
+        uploadBtn.style.display = 'block';
+        logoContainer.style.cursor = 'pointer';
+        logoContainer.title = "کرتە بکە بۆ گۆڕینی فایلی ئێکسل";
+        lblMonth.setAttribute('contenteditable', 'true');
+        btnAdminEditNotice.style.display = 'block';
+    } else {
+        uploadBtn.style.display = 'none';
+        logoContainer.style.cursor = 'default';
+        logoContainer.title = "";
+        lblMonth.setAttribute('contenteditable', 'false');
+        btnAdminEditNotice.style.display = 'none';
+    }
+}
+
+function loadSavedState() {
+    let savedMonth = localStorage.getItem('brigade_custom_month');
+    if (savedMonth) currentCustomMonth = savedMonth;
+    
+    let lblM = document.getElementById('lblMonth');
+    if (lblM) lblM.textContent = currentCustomMonth;
+    document.title = `لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}`;
+
+    let localHeaders = localStorage.getItem('brigade_saved_headers');
+    let localData = localStorage.getItem('brigade_saved_data');
+    if (localHeaders && localData) {
+        headersList = JSON.parse(localHeaders);
+        globalData = JSON.parse(localData);
+    }
+
+    let savedNotice = localStorage.getItem('brigade_announcement');
+    if (savedNotice) {
+        document.getElementById('noticeTextDisplay').textContent = savedNotice;
+    }
+}
+
+function openNoticeModal() {
+    document.getElementById('noticeInputText').value = document.getElementById('noticeTextDisplay').textContent;
+    document.getElementById('noticeModalOverlay').style.display = 'flex';
+}
+
+function closeNoticeModal() {
+    document.getElementById('noticeModalOverlay').style.display = 'none';
+}
+
+function saveNotice() {
+    let txt = document.getElementById('noticeInputText').value.trim();
+    if (!txt) txt = "هیچ ئاگادارییەک نییە.";
+    localStorage.setItem('brigade_announcement', txt);
+    document.getElementById('noticeTextDisplay').textContent = txt;
+    closeNoticeModal();
+
+    // Broadcast instant update
+    syncChannel.postMessage({ type: 'REFRESH_ALL' });
+}
+
+function buildRanksTable() {
+    const tbody = document.getElementById('ranksTableBody');
+    tbody.innerHTML = '';
+    ranksSheetData.forEach((row, index) => {
+        let tr = document.createElement('tr');
+        let tdNum = document.createElement('td');
+        tdNum.textContent = (index + 1);
+        tr.appendChild(tdNum);
+        row.forEach(cell => {
+            let td = document.createElement('td');
+            td.textContent = cell;
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+}
+
+function buildDiffTable() {
+    const tbody = document.getElementById('diffTableBody');
+    tbody.innerHTML = '';
+    diffSheetData.forEach((row, index) => {
+        let tr = document.createElement('tr');
+        let tdNum = document.createElement('td');
+        tdNum.textContent = (index + 1);
+        tr.appendChild(tdNum);
+        row.forEach(cell => {
+            let td = document.createElement('td');
+            td.textContent = cell;
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+}
+
+function openAboutModal() { document.getElementById('aboutModal').style.display = 'flex'; }
+function closeAboutModal() { document.getElementById('aboutModal').style.display = 'none'; }
+function closeAboutModalOutside(e) { if (e.target.id === 'aboutModal') closeAboutModal(); }
+
+function toggleRanksTable() {
+    const modal = document.getElementById('ranksModalOverlay');
+    if(modal.style.display === 'flex'){
+        modal.style.display = 'none';
+        window.scrollTo(0, savedScrollY);
+    } else {
+        savedScrollY = window.scrollY;
+        modal.style.display = 'flex';
+        const wrapper = document.querySelector('.ranks-table-wrapper');
+        if(wrapper){ wrapper.scrollLeft = wrapper.scrollWidth; wrapper.scrollTop = 0; }
+    }
+}
+
+function toggleDiffTable() {
+    const modal = document.getElementById('diffModalOverlay');
+    if(modal.style.display === 'flex'){
+        modal.style.display = 'none';
+        window.scrollTo(0, savedScrollY);
+    } else {
+        savedScrollY = window.scrollY;
+        modal.style.display = 'flex';
+    }
+}
+
+function closeRanksModalOutside(e) { 
+    if (e.target.id === 'ranksModalOverlay') {
+        document.getElementById('ranksModalOverlay').style.display = 'none';
+        window.scrollTo(0, savedScrollY);
+    } 
+}
+function closeDiffModalOutside(e) { 
+    if (e.target.id === 'diffModalOverlay') {
+        document.getElementById('diffModalOverlay').style.display = 'none';
+        window.scrollTo(0, savedScrollY);
+    } 
+}
+
+function updateMonth(e){
+    if (currentUser.role !== 'admin') return;
+    currentCustomMonth = e.textContent.trim();
+    document.title = `لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}`;
+    localStorage.setItem('brigade_custom_month', currentCustomMonth);
+    syncChannel.postMessage({ type: 'REFRESH_ALL' });
+}
+
+function toggleTheme(){document.body.classList.toggle('dark-mode');}
+
+function formatCellValue(h,v){
+    if(v===undefined||v===null)return"";
+    let s=v.toString().trim();
+    if(s==="")return"";
+    if(isUniqueHeader(h)){return s.replace(/,/g, '');}
+    let n=Number(s.replace(/,/g,''));
+    return!isNaN(n)&&s!==""?n.toLocaleString('en-US'):s;
+}
+
+function isTargetHeader(h){
+    let c=h.trim().replace(/ڕ/g,'ر').replace(/ي/g,'ی');
+    return c.includes("بری شایستە")||c.includes("بڕی شایستە")||c.includes("بری چەک")||c.includes("بڕی چەک")||c.includes("بری پێویست")||c.includes("بڕی پێویست");
+}
+
+function isUniqueHeader(h){return h.trim().replace(/ڕ/g,'ر').replace(/ي/g,'ی').includes("بێهاوتا");}
+function isExcludedHeader(h){let c=h.trim().replace(/ڕ/g,'ر').replace(/ي/g,'ی');return c==='پۆل'||c==='پلە'||c.includes("جۆری مووچەخۆر");}
+
+function handleFile(e){
+    if (!currentUser || currentUser.role !== 'admin') {
+        alert("تەنها ئەدمین بۆی هەیە فایلی ئێکسڵ بگۆڕێت!");
+        return;
+    }
+    const f=e.target.files[0];
+    if(!f)return;
+    document.getElementById('loadingOverlay').style.display='flex';
+    let r=new FileReader();
+    r.onload=function(evt){
+        let d=new Uint8Array(evt.target.result);
+        let wb=XLSX.read(d,{type:'array'});
+        let ws=wb.Sheets[wb.SheetNames[0]];
+        let json=XLSX.utils.sheet_to_json(ws,{header:1});
+        if(json.length>0){
+            headersList=json[0];
+            globalData=[];
+            for(let i=1; i<json.length; i++){
+                let row=json[i];
+                let obj={};
+                headersList.forEach((h,idx)=>{obj[h]=row[idx]!==undefined?row[idx]:"";});
+                globalData.push(obj);
+            }
+            localStorage.setItem('brigade_saved_headers', JSON.stringify(headersList));
+            localStorage.setItem('brigade_saved_data', JSON.stringify(globalData));
+            localStorage.setItem('brigade_custom_month', currentCustomMonth);
+
+            // Broadcast to all open user tabs/screens
+            syncChannel.postMessage({ type: 'REFRESH_ALL' });
+
+            alert('فایلی ئێکسڵ بە سەرکەوتوویی بارکرا و لای هەموو بەکارهێنەران ڕاستەوخۆ نوێ کرایەوە!');
+        }
+        document.getElementById('loadingOverlay').style.display='none';
+    };
+    r.readAsArrayBuffer(f);
+}
+
+function displayVerticalRecord(row){
+    const c=document.getElementById('resultContainer');
+    c.innerHTML='';
+    let g="";
+    headersList.forEach(h=>{let t=h.trim().toLowerCase();if((t==='پۆل'||t==='پلە')&&row[h])g=row[h].toString().trim();});
+
+    const card=document.createElement('div');
+    card.className='record-card';
+    const hd=document.createElement('div');
+    hd.className='record-header';
+    hd.innerHTML=g?`لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}<br>یەکە « ${g} »`:`لیستی مووچەی لیوای ۷ی پیادە بۆ مانگی ${currentCustomMonth}`;
+    card.appendChild(hd);
+
+    headersList.filter(h=>!isExcludedHeader(h)&&row[h]!==undefined&&row[h]!==null&&row[h].toString().trim()!=="").forEach(h=>{
+        const r=document.createElement('div');
+        r.className='kv-row';
+        const k=document.createElement('div');
+        k.className='kv-key';
+        k.textContent=h;
+        const v=document.createElement('div');
+        v.className='kv-val';
+        if(isTargetHeader(h))v.classList.add('special-highlight');
+        v.textContent=formatCellValue(h,row[h]);
+        r.appendChild(k);
+        r.appendChild(v);
+        card.appendChild(r);
+        if(isUniqueHeader(h)){ const d=document.createElement('div'); d.className='unique-divider'; card.appendChild(d); }
+    });
+    c.appendChild(card);
+    document.getElementById('bottomPrintContainer').style.display='flex';
+}
+
+function clearSearch(){
+    document.getElementById('txtSearch').value='';
+    document.getElementById('lstSuggestions').style.display='none';
+    document.getElementById('resultContainer').innerHTML='';
+    document.getElementById('bottomPrintContainer').style.display='none';
+}
+
+function filterSearch(){
+    const q=document.getElementById('txtSearch').value.trim(),lst=document.getElementById('lstSuggestions');
+    lst.innerHTML='';
+    document.getElementById('resultContainer').innerHTML='';
+    document.getElementById('bottomPrintContainer').style.display='none';
+    if(q.length===0||globalData.length===0){lst.style.display='none';return;}
+
+    let cq=q.replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/ە/g,'ه').replace(/\u200c/g,'').toLowerCase();
+    let sm=[],im=[];
+
+    globalData.forEach(row=>{
+        let val=row[headersList[targetColumnIndex]];
+        if(val===undefined||val===null)return;
+        let cv=val.toString().replace(/ي/g,'ی').replace(/ك/g,'ک').replace(/ە/g,'ه').replace(/\u200c/g,'').toLowerCase();
+        if(cv.includes(cq)){
+            if(cv.startsWith(cq)){if(!sm.includes(row))sm.push(row);}
+            else{if(!im.includes(row)&&!sm.includes(row))im.push(row);}
+        }
+    });
+
+    let m=[...sm,...im],cnt=0;
+    m.slice(0,30).forEach(item=>{
+        let dv=item[headersList[targetColumnIndex]]||Object.values(item)[1]||Object.values(item)[0]||"";
+        const li=document.createElement('li');
+        li.textContent=dv;
+        li.onclick=()=>{
+            document.getElementById('txtSearch').value=dv;
+            lst.style.display='none';
+            displayVerticalRecord(item);
+        };
+        lst.appendChild(li);
+        cnt++;
+    });
+    lst.style.display=cnt>0?'block':'none';
+}
+</script>
+</body>
+</html>
