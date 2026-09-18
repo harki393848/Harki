@@ -325,6 +325,21 @@ body.dark-mode .top-container {
     to { opacity: 1; transform: translateX(0); }
 }
 
+/* ئەنیمەیشنی لەرینەوەی زەنگۆڵەی 🔔 لە کاتی ئاگاداری نوێدا */
+@keyframes bellRing {
+    0%, 100% { transform: rotate(0deg); }
+    15% { transform: rotate(16deg); }
+    30% { transform: rotate(-16deg); }
+    45% { transform: rotate(10deg); }
+    60% { transform: rotate(-10deg); }
+    75% { transform: rotate(4deg); }
+}
+
+.bell-active {
+    animation: bellRing 1.2s ease infinite;
+    color: #f59e0b !important;
+}
+
 /* مۆداڵەکان بە جوڵەی ڤیدیۆیی دەکرێنەوە */
 .modal-overlay, .ranks-modal-overlay, .diff-modal-overlay {
     animation: modalBackdropFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
@@ -852,11 +867,28 @@ body.dark-mode .special-highlight {
             </div>
         </div>
 
-        <!-- ٣. دەستکاریکردنی دەقی ئاگاداری -->
+        <!-- ٣. دەستکاریکردنی تەنها شریتی 📢 (سەربەخۆیە لە ئاگادارییەکان) -->
         <div style="background:var(--th-bg); padding:10px; border-radius:10px; border:1px solid var(--table-border); margin-bottom:12px;">
-            <label style="font-size:11px; font-weight:bold; color:var(--th-color); display:block; margin-bottom:6px;">📢 دەقی ئاگاداری گشتی بۆ هەمووان:</label>
-            <textarea id="adminNoticeTextarea" class="notice-textarea" style="height:70px; font-size:11.5px;" placeholder="دەقی ئاگاداری لێرە بنووسە..."></textarea>
-            <button class="small-icon-btn" style="width:100%; margin-top:6px;" onclick="saveAdminNotice()">بڵاوکردنەوەی ئاگاداری</button>
+            <label style="font-size:11px; font-weight:bold; color:var(--th-color); display:block; margin-bottom:6px;">📢 دەستکاریکردنی تەنها شریتی سەرەکی:</label>
+            <div style="display:flex; gap:6px;">
+                <input type="text" id="adminStripInput" class="login-input" style="margin-bottom:0; font-size:12px; padding:6px 10px;" placeholder="دەقی شریتی سەرەکی لێرە بنووسە...">
+                <button class="small-icon-btn" style="flex:0 0 auto; background:#d97706; color:#fff;" onclick="saveAdminStripBanner()">گۆڕینی شریت</button>
+            </div>
+        </div>
+
+        <!-- ٤. بەڕێوەبردنی ئاگادارییەکانی ناو زەنگۆڵە 🔔 (چەندین ئاگاداری، دەستکاری، سڕینەوە) -->
+        <div style="background:var(--th-bg); padding:10px; border-radius:10px; border:1px solid var(--table-border); margin-bottom:12px;">
+            <label style="font-size:11px; font-weight:bold; color:var(--th-color); display:block; margin-bottom:6px;">🔔 بەڕێوەبردنی ئاگادارییەکانی ناو زەنگۆڵە:</label>
+            <textarea id="adminNoticeTextarea" class="notice-textarea" style="height:60px; font-size:11.5px;" placeholder="دەقی ئاگاداری بۆ ناو زەنگۆڵە بنووسە..."></textarea>
+            <div style="display:flex; gap:6px; margin-top:6px;">
+                <button class="small-icon-btn" style="background:#0284c7; color:#fff; flex:1;" id="btnAdminSaveNotice" onclick="addOrUpdateAdminNotice()">➕ ناردن بۆ ناو زەنگۆڵە</button>
+                <button class="small-icon-btn" style="background:#64748b; color:#fff; display:none;" id="btnCancelEditNotice" onclick="cancelEditNotice()">پاشگەزبوونەوە</button>
+            </div>
+
+            <div style="margin-top:10px; border-top:1px dashed var(--table-border); padding-top:8px;">
+                <div style="font-size:10.5px; font-weight:bold; color:var(--th-color); margin-bottom:6px;">ئاگادارییە چالاکەکانی ناو زەنگۆڵە:</div>
+                <div id="adminNoticesList" style="max-height:140px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;"></div>
+            </div>
         </div>
 
         <!-- دوگمەی هەڵگرتنی گشتی و داخستن -->
@@ -887,7 +919,7 @@ body.dark-mode .special-highlight {
         <span>سیستەمی لێکۆڵینەوەی مووچەی لیوای ۷ی پیادە</span>
     </div>
 
-    <!-- Announcement Box -->
+    <!-- شریتی فەرمی 📢 (تەنها یەک شریتە و سەربەخۆیە لە ئاگادارییەکانی ناو زەنگۆڵە) -->
     <div class="notice-box" id="noticeBanner">
         <span style="font-size:16px;">📢</span>
         <div class="notice-content" id="noticeTextDisplay">بەخێربێن بۆ سیستەمی لێکۆڵینەوەی مووچە.</div>
@@ -924,23 +956,27 @@ body.dark-mode .special-highlight {
     </div>
 
     <div class="top-container">
-        <button class="icon-btn" onclick="openAboutModal()" title="دەربارەی ئێمە">ℹ️</button>
+        <div style="display:flex; gap:6px; align-items:center;">
+            <button class="icon-btn" onclick="openAboutModal()" title="دەربارەی ئێمە">ℹ️</button>
+            <button class="icon-btn" id="btnNoticeBell" onclick="openNoticesModal()" title="هەموو ئاگادارییەکان" style="position:relative;">
+                🔔
+                <span id="noticesBellBadge" style="position:absolute; top:-4px; right:-4px; background:#ef4444; color:#ffffff; font-size:10px; font-weight:900; border-radius:50%; min-width:16px; height:16px; display:none; align-items:center; justify-content:center; box-shadow:0 0 6px rgba(239,68,68,0.6); padding:0 2px;">0</span>
+            </button>
+        </div>
         <div class="center-title">زانیاری مووچەی لیوای ۷ی پیادە بۆ مانگی <span id="lblMonth" contenteditable="false" onblur="updateMonth(this)">6/2026</span></div>
         <button class="icon-btn" onclick="toggleTheme()" title="گۆڕینی ڕەنگ">🌙</button>
     </div>
 
     <div class="search-container">
-        <!-- تاگەکانی فلتەری خێرا بۆ گەڕان لە هەموو بەشەکان -->
+        <!-- تاگەکانی فلتەری خێرا: تەنها هەموو، ناو، و ژمارەی کەسی بێهاوتا -->
         <div class="search-filter-pills" id="searchPillsContainer">
             <span class="filter-pill active" onclick="setSearchFilter('all', this)">🌐 هەموو</span>
             <span class="filter-pill" onclick="setSearchFilter('name', this)">👤 ناو</span>
-            <span class="filter-pill" onclick="setSearchFilter('rank', this)">🎖️ پلە</span>
             <span class="filter-pill" onclick="setSearchFilter('unique_id', this)">🆔 ژمارەی کەسی بێهاوتا</span>
-            <span class="filter-pill" onclick="setSearchFilter('unit', this)">🏢 فەوج / پۆل</span>
         </div>
 
         <div class="search-box">
-            <input type="text" id="txtSearch" placeholder="گەڕان بەپێی ناو، پلە، یان ژمارەی کەسی بێهاوتا (وەک: 3730701504341)..." oninput="filterSearch()">
+            <input type="text" id="txtSearch" placeholder="گەڕان بەپێی ناو یان ژمارەی کەسی بێهاوتا (وەک: 3730701504341)..." oninput="filterSearch()">
             <span class="search-icon-left">🔍</span>
             <span class="search-icon-right" id="btnClearSearch" onclick="clearSearch()" title="بەتالکردنەوەی سێرچ">✕</span>
             <ul id="lstSuggestions"></ul>
@@ -964,6 +1000,20 @@ body.dark-mode .special-highlight {
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
             <button class="small-icon-btn" style="background:#ef4444;color:#fff;border:none;" onclick="closeNoticeModal()">پاشگەزبوونەوە</button>
             <button class="small-icon-btn" onclick="saveNotice()">بڵاوکردنەوە</button>
+        </div>
+    </div>
+</div>
+
+<!-- مۆداڵی تایبەت بە نیشاندانی هەموو ئاگادارییەکان 🔔 -->
+<div class="modal-overlay" id="allNoticesModal" onclick="closeNoticesModalOutside(event)" style="display:none;">
+    <div class="ranks-modal-content" style="max-width:480px; max-height:85vh;">
+        <div class="ranks-title-container">
+            <button class="icon-btn" onclick="closeNoticesModal()" title="داخستن">✕</button>
+            <div class="ranks-title-text">🔔 تەواوی ئاگادارییە فەرمییەکان</div>
+            <div style="width: 32px; visibility: hidden;"></div>
+        </div>
+        <div id="modalAllNoticesList" style="padding:14px; overflow-y:auto; flex-grow:1; display:flex; flex-direction:column; gap:10px;">
+            <!-- هەموو ئاگادارییەکان لێرە کۆدەبنەوە -->
         </div>
     </div>
 </div>
@@ -1053,6 +1103,26 @@ async function broadcastLiveSalaryUpdate(payload) {
     }
 }
 
+let currentStripText = "بەخێربێن بۆ سیستەمی لێکۆڵینەوەی مووچەی لیوای ۷ی پیادە.";
+
+function saveAdminStripBanner() {
+    const val = document.getElementById('adminStripInput')?.value.trim();
+    if (!val) {
+        alert('تکایە سەرەتا دەقێک بۆ شریتی سەرەکی بنووسە!');
+        return;
+    }
+    currentStripText = val;
+    localStorage.setItem('brigade_strip_banner', currentStripText);
+    const nd = document.getElementById('noticeTextDisplay');
+    if (nd) nd.textContent = currentStripText;
+
+    broadcastLiveSalaryUpdate({
+        stripBanner: currentStripText,
+        message: '📢 شریتی سەرەکی نوێکرایەوە!'
+    });
+    alert('شریتی سەرەکی بە سەرکەوتوویی نوێکرایەوە!');
+}
+
 // جێگیرکردنی داتاکان لەسەر شاشە و ناو مۆبایل بە هەمیشەیی
 function applyPayloadLocally(data) {
     if (!data) return;
@@ -1067,10 +1137,18 @@ function applyPayloadLocally(data) {
         changed = true;
     }
 
-    if (data.notice !== undefined) {
-        localStorage.setItem('brigade_announcement', data.notice);
+    if (data.stripBanner !== undefined) {
+        currentStripText = data.stripBanner;
+        localStorage.setItem('brigade_strip_banner', currentStripText);
         const nd = document.getElementById('noticeTextDisplay');
-        if (nd) nd.textContent = data.notice;
+        if (nd) nd.textContent = currentStripText;
+        changed = true;
+    }
+
+    if (data.notices !== undefined && Array.isArray(data.notices)) {
+        globalNotices = data.notices;
+        localStorage.setItem('brigade_saved_notices', JSON.stringify(globalNotices));
+        renderNotices();
         changed = true;
     }
 
@@ -1385,15 +1463,116 @@ function verifySecretAdminPass() {
     }
 }
 
+let globalNotices = [
+    { id: 1, text: "بەخێربێن بۆ سیستەمی لێکۆڵینەوەی مووچەی لیوای ۷ی پیادە.", date: "فەرمی" }
+];
+let editingNoticeId = null;
+
+function openNoticesModal() {
+    const modal = document.getElementById('allNoticesModal');
+    const bell = document.getElementById('btnNoticeBell');
+    if (modal) {
+        modal.style.display = 'flex';
+        // کاتێک بەکارهێنەر زەنگەکە دەکاتەوە، لەرزینەکەی دەوەستێت
+        if (bell) bell.classList.remove('bell-active');
+        localStorage.setItem('brigade_seen_notices_count', globalNotices.length.toString());
+        updateBellBadge();
+    }
+}
+
+function closeNoticesModal() {
+    const modal = document.getElementById('allNoticesModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function closeNoticesModalOutside(e) {
+    if (e.target.id === 'allNoticesModal') closeNoticesModal();
+}
+
+function updateBellBadge() {
+    const badge = document.getElementById('noticesBellBadge');
+    const bell = document.getElementById('btnNoticeBell');
+    if (!badge || !bell) return;
+
+    const total = globalNotices.length;
+    const seen = parseInt(localStorage.getItem('brigade_seen_notices_count') || '0', 10);
+
+    if (total > 0) {
+        badge.textContent = total;
+        badge.style.display = 'flex';
+        // ئەگەر ئاگاداری نوێ هەبێت کە نەبینراوە، با زەنگەکە بلەرزێت
+        if (total > seen) {
+            bell.classList.add('bell-active');
+        } else {
+            bell.classList.remove('bell-active');
+        }
+    } else {
+        badge.style.display = 'none';
+        bell.classList.remove('bell-active');
+    }
+}
+
+function renderNotices() {
+    updateBellBadge();
+
+    // ١. هەموو ئاگادارییەکان بە تایبەت دەچنە ناو پەنجەرەی زەنگۆڵەی 🔔 نەک پەڕەی سەرەکی
+    const modalList = document.getElementById('modalAllNoticesList');
+    if (modalList) {
+        modalList.innerHTML = '';
+        if (globalNotices.length === 0) {
+            modalList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--th-color); opacity:0.7; font-weight:bold;">هیچ ئاگادارییەک بەردەست نییە.</div>';
+        } else {
+            globalNotices.forEach((n, idx) => {
+                const item = document.createElement('div');
+                item.className = 'notice-box';
+                item.style.margin = '0';
+                item.innerHTML = `
+                    <div style="font-size:18px;">🔔</div>
+                    <div style="flex:1; display:flex; flex-direction:column; gap:3px;">
+                        <div style="font-weight:700; font-size:12.5px; color:inherit;">${n.text}</div>
+                        ${n.date ? `<div style="font-size:10px; opacity:0.75;">ڕێکەوت: ${n.date}</div>` : ''}
+                    </div>
+                `;
+                modalList.appendChild(item);
+            });
+        }
+    }
+
+    // ٢. نیشاندانی ئاگادارییەکان لەناو پانێڵی ئەدمین بۆ دەستکاری و سڕینەوە
+    const adminList = document.getElementById('adminNoticesList');
+    if (adminList) {
+        adminList.innerHTML = '';
+        if (globalNotices.length === 0) {
+            adminList.innerHTML = '<div style="font-size:11px; opacity:0.6; text-align:center; padding:6px;">هیچ ئاگادارییەک نییە.</div>';
+        } else {
+            globalNotices.forEach(n => {
+                const item = document.createElement('div');
+                item.style.cssText = 'display:flex; align-items:center; justify-content:space-between; background:var(--val-bg); border:1px solid var(--table-border); border-radius:6px; padding:6px 8px; gap:6px; font-size:11px;';
+                item.innerHTML = `
+                    <span style="flex:1; word-break:break-word; font-weight:600;">${n.text}</span>
+                    <div style="display:flex; gap:4px; flex-shrink:0;">
+                        <button onclick="startEditNotice(${n.id})" style="background:#0284c7; color:#fff; border:none; border-radius:4px; padding:3px 6px; cursor:pointer; font-size:10px;">✏️ دەستکاری</button>
+                        <button onclick="deleteAdminNotice(${n.id})" style="background:#ef4444; color:#fff; border:none; border-radius:4px; padding:3px 6px; cursor:pointer; font-size:10px;">🗑️ سڕینەوە</button>
+                    </div>
+                `;
+                adminList.appendChild(item);
+            });
+        }
+    }
+}
+
 function openSecretAdminPanel() {
     const panel = document.getElementById('secretAdminPanelModal');
     const monthInput = document.getElementById('adminMonthInput');
-    const noticeArea = document.getElementById('adminNoticeTextarea');
     const urlInput = document.getElementById('adminExcelUrlInput');
+    
+    const stripInput = document.getElementById('adminStripInput');
+    if (stripInput) stripInput.value = currentStripText;
 
     if (monthInput) monthInput.value = currentCustomMonth;
-    if (noticeArea) noticeArea.value = document.getElementById('noticeTextDisplay')?.textContent || '';
     if (urlInput) urlInput.value = localStorage.getItem('brigade_saved_excel_url') || '';
+    cancelEditNotice();
+    renderNotices();
 
     if (panel) panel.style.display = 'flex';
 }
@@ -1418,17 +1597,86 @@ function saveAdminMonth() {
     alert('مانگی مووچە بە سەرکەوتوویی نوێکرایەوە!');
 }
 
-function saveAdminNotice() {
-    let txt = document.getElementById('adminNoticeTextarea')?.value.trim();
-    if (!txt) txt = "هیچ ئاگادارییەک نییە.";
-    localStorage.setItem('brigade_announcement', txt);
-    const nd = document.getElementById('noticeTextDisplay');
-    if (nd) nd.textContent = txt;
+function addOrUpdateAdminNotice() {
+    const textarea = document.getElementById('adminNoticeTextarea');
+    const txt = textarea ? textarea.value.trim() : '';
+    if (!txt) {
+        alert('تکایە سەرەتا دەقی ئاگاداری بنووسە!');
+        return;
+    }
+
+    const now = new Date();
+    const dateStr = `${now.getDate()}/${now.getMonth() + 1}`;
+
+    if (editingNoticeId !== null) {
+        // دەستکاریکردنی ئاگاداریی کۆن
+        const item = globalNotices.find(n => n.id === editingNoticeId);
+        if (item) {
+            item.text = txt;
+            item.date = dateStr;
+        }
+        editingNoticeId = null;
+    } else {
+        // زیادکردنی ئاگادارییەکی نوێ
+        globalNotices.unshift({
+            id: Date.now(),
+            text: txt,
+            date: dateStr
+        });
+    }
+
+    if (textarea) textarea.value = '';
+    cancelEditNotice();
+
+    localStorage.setItem('brigade_saved_notices', JSON.stringify(globalNotices));
+    renderNotices();
+
     broadcastLiveSalaryUpdate({
-        notice: txt,
-        message: '📢 ئاگاداری نوێ لەلایەن بەڕێوەبەرەوە بڵاوکرایەوە!'
+        notices: globalNotices,
+        message: '📢 ئاگادارییەکان نوێکرانەوە!'
     });
-    alert('ئاگاداری نوێ بە سەرکەوتوویی بڵاوکرایەوە!');
+}
+
+function startEditNotice(id) {
+    const item = globalNotices.find(n => n.id === id);
+    if (!item) return;
+    editingNoticeId = id;
+
+    const textarea = document.getElementById('adminNoticeTextarea');
+    const saveBtn = document.getElementById('btnAdminSaveNotice');
+    const cancelBtn = document.getElementById('btnCancelEditNotice');
+
+    if (textarea) {
+        textarea.value = item.text;
+        textarea.focus();
+    }
+    if (saveBtn) saveBtn.textContent = '💾 پاشەکەوتکردنی دەستکاری';
+    if (cancelBtn) cancelBtn.style.display = 'inline-block';
+}
+
+function cancelEditNotice() {
+    editingNoticeId = null;
+    const textarea = document.getElementById('adminNoticeTextarea');
+    const saveBtn = document.getElementById('btnAdminSaveNotice');
+    const cancelBtn = document.getElementById('btnCancelEditNotice');
+
+    if (textarea) textarea.value = '';
+    if (saveBtn) saveBtn.textContent = '➕ بڵاوکردنەوەی ئاگاداری';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+}
+
+function deleteAdminNotice(id) {
+    if (!confirm("دڵنیایت لە سڕینەوەی ئەم ئاگادارییە؟")) return;
+    globalNotices = globalNotices.filter(n => n.id !== id);
+    if (editingNoticeId === id) cancelEditNotice();
+
+    localStorage.setItem('brigade_saved_notices', JSON.stringify(globalNotices));
+    renderNotices();
+
+    broadcastLiveSalaryUpdate({
+        notices: globalNotices,
+        message: '🗑️ ئاگادارییەک سڕایەوە!'
+    });
 }
 
 function updateMonth(e) {
@@ -1438,24 +1686,6 @@ function updateMonth(e) {
     broadcastLiveSalaryUpdate({
         month: currentCustomMonth,
         message: `📅 مانگی مووچە گۆڕدرا بۆ: ${currentCustomMonth}`
-    });
-}
-
-function closeNoticeModal() {
-    const modal = document.getElementById('noticeModalOverlay');
-    if (modal) modal.style.display = 'none';
-}
-
-function saveNotice() {
-    let txt = document.getElementById('noticeInputText')?.value.trim();
-    if (!txt) txt = "هیچ ئاگادارییەک نییە.";
-    closeNoticeModal();
-    localStorage.setItem('brigade_announcement', txt);
-    const nd = document.getElementById('noticeTextDisplay');
-    if (nd) nd.textContent = txt;
-    broadcastLiveSalaryUpdate({
-        notice: txt,
-        message: '📢 ئاگاداری نوێ بڵاوکرایەوە!'
     });
 }
 
@@ -1475,11 +1705,18 @@ function loadSavedState() {
         } catch(e) {}
     }
 
-    let savedNotice = localStorage.getItem('brigade_announcement');
-    if (savedNotice) {
-        const nd = document.getElementById('noticeTextDisplay');
-        if (nd) nd.textContent = savedNotice;
+    let savedNotices = localStorage.getItem('brigade_saved_notices');
+    if (savedNotices) {
+        try {
+            globalNotices = JSON.parse(savedNotices);
+        } catch(e) {}
+    } else {
+        let oldNotice = localStorage.getItem('brigade_announcement');
+        if (oldNotice) {
+            globalNotices = [{ id: 1, text: oldNotice, date: "فەرمی" }];
+        }
     }
+    renderNotices();
 }
 
 const ranksSheetData = [
